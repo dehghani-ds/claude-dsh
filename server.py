@@ -705,6 +705,8 @@ def notice_update(b):
             c.execute(f"UPDATE notices SET read=? WHERE id IN ({marks})", (int(bool(b["read"])), *ids))
         if b.get("delete"):
             c.execute(f"UPDATE notices SET deleted=1, read=1 WHERE id IN ({marks})", ids)
+        if b.get("restore"):  # undo a delete
+            c.execute(f"UPDATE notices SET deleted=0 WHERE id IN ({marks})", ids)
     return {"ok": True}
 
 

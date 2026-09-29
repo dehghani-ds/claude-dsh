@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude Workbench</title>
+<link rel="icon" id="favicon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16.0 13.8L16.0 2.8M17.2 14.2L22.4 6.5M17.8 14.8L27.4 8.6M18.2 16.1L28.0 16.4M18.0 17.0L27.7 21.7M17.0 18.0L21.1 26.0M16.0 18.2L15.8 29.8M15.0 17.9L10.5 26.4M14.0 17.0L4.5 21.6M13.8 16.1L4.4 16.6M14.1 14.8L4.6 8.9M14.9 14.1L9.7 5.5' stroke='%23D97757' stroke-width='3.4' stroke-linecap='round' fill='none'/><circle cx='16' cy='16' r='3.4' fill='%23D97757'/></svg>">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <style>
@@ -218,6 +219,17 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .ncard{border:1px solid var(--border);border-radius:10px;margin-top:8px;background:var(--panel)}
 .ncard.unread{border-color:var(--user-border);box-shadow:inset 3px 0 0 var(--accent)}
 .ncard .nhead{display:flex;gap:8px;align-items:center;padding:9px 12px;cursor:pointer}
+.news-select{display:flex;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap;min-height:46px}
+.news-select .sp{flex:1}
+.news-select .batch{display:flex;gap:6px;flex-wrap:wrap}
+.news-select .check{font-size:13px;cursor:pointer}
+.nsel{margin:0;flex:none;cursor:pointer;accent-color:var(--accent);width:15px;height:15px}
+.ncard.selected{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,var(--panel))}
+.ncard .ndel{opacity:0;padding:2px 6px;flex:none}
+.ncard .nhead:hover .ndel,.ncard .ndel:focus-visible{opacity:1}
+@media (hover:none){.ncard .ndel{opacity:1}}
+#toast.action{pointer-events:auto;display:flex;gap:12px;align-items:center}
+#toast.action button{background:transparent;border:1px solid currentColor;color:inherit;padding:2px 10px;font-weight:600}
 .ncard .ndot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
 .ncard:not(.unread) .ndot{background:transparent;border:1px solid var(--border)}
 .ncard .ntitle{flex:1;min-width:0;font-weight:500}
@@ -452,6 +464,16 @@ Empty = worktree-<name>" placeholder="" list="wtBranchList" autocomplete="off">
     <button id="newsCheckBtn" onclick="checkNews()" data-tip="Check now: changelog, installed version, CLI options and session-file format.&#10;Also runs automatically every 6 hours while the server is running.">↻ Check now</button>
     <button onclick="markAllRead()" data-tip="Mark every visible update as read">✓ Mark all read</button>
   </div>
+  <div class="news-select">
+    <label class="check" data-tip="Select or clear every update in this tab.&#10;Tip: shift-click checkboxes to select a range."><input type="checkbox" id="newsSelAll" onchange="selectAllVisible(this.checked)"> <span id="newsSelLabel">Select all</span></label>
+    <span class="sp"></span>
+    <span id="newsBatch" class="batch" hidden>
+      <button onclick="batchRead(true)" data-tip="Mark the selected updates as read">✓ Mark read</button>
+      <button onclick="batchRead(false)" data-tip="Mark the selected updates as unread">◉ Mark unread</button>
+      <button class="danger" id="newsDelSel" onclick="deleteNotices(selectedVisible())" data-tip="Delete the selected updates (you can undo right after)">🗑 Delete selected</button>
+    </span>
+    <button class="danger" id="newsDelAll" onclick="deleteNotices(newsVisible().map(n => n.id), true)" data-tip="Delete every update in this tab (you can undo right after)">🗑 Delete all</button>
+  </div>
   <div class="news-meta" id="newsMeta"></div>
   <div class="news-list" id="newsList"></div>
 </dialog>
@@ -483,7 +505,13 @@ function ago(t) {
   return new Date(t*1000).toLocaleDateString();
 }
 const tilde = p => (p || "").replace(/^\/home\/[^/]+/, "~");
-function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2500); }
+/* a modal <dialog> sits in the browser's top layer and makes the page behind it inert, so floating
+   elements (toast, tooltip) must live inside the open dialog to be visible and clickable */
+function hostFloating(el) {
+  const host = [...document.querySelectorAll("dialog[open]")].pop() || document.body;
+  if (el.parentNode !== host) host.appendChild(el);
+}
+function toast(msg) { const t = $("toast"); hostFloating(t); t.textContent = msg; t.classList.remove("action"); t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2500); }
 function setView(v) { document.body.dataset.view = v; }
 function toggleTheme() {
   const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
@@ -500,7 +528,7 @@ function showTip(el, delay) {
   tipTimer = setTimeout(() => {
     const text = el.dataset.tip;
     if (!text || !el.isConnected) return;
-    tipTarget = el; tipEl.textContent = text;
+    tipTarget = el; hostFloating(tipEl); tipEl.textContent = text;
     tipEl.className = ""; tipEl.style.left = "0px"; tipEl.style.top = "0px";
     const r = el.getBoundingClientRect(), t = tipEl.getBoundingClientRect(), m = 8;
     const above = r.top - t.height - m > 4;
@@ -1035,14 +1063,15 @@ for (const [id, label] of [["permMode", "Permission mode"], ["model", "Model"], 
    plugin_errors entries carry the failing directory in `path` since Claude Code 2.1.283. */
 function showInitInfo(ev) {
   const mcp = ev.mcp_servers || [];
-  const ok = mcp.filter(m => m.status === "connected"), bad = mcp.filter(m => m.status !== "connected");
+  // "pending" = still connecting (its tools may arrive on a later turn); anything else not connected is a problem
+  const ok = mcp.filter(m => m.status === "connected"), bad = mcp.filter(m => !["connected", "pending"].includes(m.status));
   const plugins = ev.plugins || [], perrs = ev.plugin_errors || [];
   const line = document.createElement("div"); line.className = "meta-line";
   line.textContent = [ev.claude_code_version && "Claude Code " + ev.claude_code_version, ev.model, ev.permissionMode,
     mcp.length && `MCP ${ok.length}/${mcp.length} connected`, plugins.length && `${plugins.length} plugin${plugins.length === 1 ? "" : "s"}`]
     .filter(Boolean).join(" · ");
   line.dataset.tip = `Session started\nClaude Code: ${ev.claude_code_version || "?"}\nModel: ${ev.model || "?"}\nPermission mode: ${ev.permissionMode || "?"}` +
-    (mcp.length ? "\n\nMCP servers:\n" + mcp.map(m => `${m.status === "connected" ? "✓" : "✗"} ${m.name} (${m.status})`).join("\n") : "") +
+    (mcp.length ? "\n\nMCP servers:\n" + mcp.map(m => `${m.status === "connected" ? "✓" : m.status === "pending" ? "…" : "✗"} ${m.name} (${m.status === "pending" ? "still connecting" : m.status})`).join("\n") : "") +
     (plugins.length ? "\n\nPlugins:\n" + plugins.map(x => `• ${x.name}${x.version ? " " + x.version : ""}`).join("\n") : "") +
     (ev.tools ? `\n\nTools available: ${ev.tools.length}` : "");
   $("msgs").appendChild(line);
@@ -1163,7 +1192,7 @@ function copyResume() {
 
 /* ---------- news inbox: Claude Code changes kept in workbench.db ---------- */
 const newsDlg = $("newsDlg");
-const news = { items: [], unread: 0, filter: store.get("newsFilter") || "all", open: new Set() };
+const news = { items: [], unread: 0, filter: store.get("newsFilter") || "all", open: new Set(), selected: new Set(), lastSel: null };
 const SRC = {
   changelog: ["changelog", "New Claude Code version from the official changelog"],
   version: ["installed", "The claude program on this computer was updated"],
@@ -1176,7 +1205,10 @@ async function loadNews() {
 }
 function applyNews(r) {
   Object.assign(news, { items: r.items, unread: r.unread, lastCheck: r.lastCheck, checking: r.checking, error: r.error });
+  const alive = new Set(r.items.map(n => n.id));
+  for (const id of [...news.selected]) if (!alive.has(id)) news.selected.delete(id);
   $("bellCount").hidden = !news.unread; $("bellCount").textContent = news.unread > 99 ? "99+" : news.unread;
+  setFaviconDot(news.unread > 0);
   $("bellBtn").dataset.tip = (news.unread ? `${news.unread} unread update${news.unread === 1 ? "" : "s"}\n` : "No unread updates\n") +
     "Claude Code updates: new versions, CLI changes and session-format changes that may affect this dashboard";
   // banner in the chat area when something arrived that you haven't dismissed yet
@@ -1190,6 +1222,12 @@ function applyNews(r) {
   }
   if (newsDlg.open) renderNews();
 }
+/* tab icon: Claude starburst; a small dot is added while there are unread updates */
+const FAVICON = $("favicon").href;
+function setFaviconDot(on) {
+  const want = on ? FAVICON.replace("</svg>", "<circle cx='25' cy='7' r='6.5' fill='%23e5484d' stroke='white' stroke-width='2'/></svg>") : FAVICON;
+  if ($("favicon").href !== want) $("favicon").href = want;
+}
 function dismissBanner() {
   store.set("newsDismissedMax", String(Math.max(0, ...news.items.map(n => n.id))));
   $("newsBanner").hidden = true;
@@ -1199,6 +1237,7 @@ function openNews(filter) {
   renderNews(); newsDlg.showModal(); dismissBanner();
 }
 function setNewsFilter(f, silent) {
+  if (f !== news.filter) { news.selected.clear(); news.lastSel = null; }  // selection is per tab
   news.filter = f; store.set("newsFilter", f);
   if (!silent) renderNews();
 }
@@ -1214,16 +1253,21 @@ function renderNews() {
   $("newsMeta").textContent = (news.checking ? "Checking…" : news.lastCheck ? `Last checked ${ago(news.lastCheck)}` : "Not checked yet") +
     " · checks automatically every 6 hours" + (news.error ? ` · ⚠ ${news.error}` : "");
   const list = newsVisible();
+  renderSelectionBar(list);
   $("newsList").innerHTML = list.map(n => {
     const [label, tip] = SRC[n.source] || [n.source, ""];
     const isOpen = news.open.has(n.id);
-    return `<div class="ncard ${n.read ? "" : "unread"}" data-id="${n.id}">
+    const sel = news.selected.has(n.id);
+    return `<div class="ncard ${n.read ? "" : "unread"} ${sel ? "selected" : ""}" data-id="${n.id}">
       <div class="nhead" onclick="toggleNotice(${n.id})" data-tip="${tipAttr((isOpen ? "Click to collapse" : "Click to read") + (n.read ? "" : " (marks it read)"))}">
+        <input type="checkbox" class="nsel" ${sel ? "checked" : ""} aria-label="Select" data-tip="Select for batch actions (shift-click selects a range)"
+          onclick="event.stopPropagation(); toggleSel(${n.id}, this.checked, event.shiftKey)">
         <span class="ndot" data-tip="${n.read ? "Read" : "Unread"}"></span>
         <span class="ntitle">${esc(n.title)}</span>
         ${n.relevant ? `<span class="chip rel" data-tip="May need a change in this dashboard">🔧 dashboard</span>` : ""}
         <span class="chip src ${esc(n.source)}" data-tip="${tipAttr(tip)}">${esc(label)}</span>
         <span class="ndate" data-tip="${tipAttr("Found " + new Date(n.created * 1000).toLocaleString())}">${ago(n.created)}</span>
+        <button class="ghost danger ndel" aria-label="Delete" data-tip="Delete this update (you can undo right after)" onclick="event.stopPropagation(); deleteNotices([${n.id}])">🗑</button>
       </div>
       ${isOpen ? `<div class="nbody"><div class="md">${md(n.body)}</div>
         ${n.analysis ? `<div class="analysis"><div class="ah" data-tip="Claude's reading of what this change means for the dashboard">✳ Claude on impact for this dashboard</div><div class="md">${md(n.analysis)}</div></div>` : ""}
@@ -1249,9 +1293,53 @@ async function markAllRead() {
   const ids = newsVisible().filter(n => !n.read).map(n => n.id);
   if (ids.length) setRead(ids, true);
 }
-async function deleteNotices(ids) {
-  if (!confirm("Delete this update? It won't come back.")) return;
-  try { await api("/api/notice", { ids, delete: true }); ids.forEach(i => news.open.delete(i)); applyNews(await api("/api/notices")); } catch (e) { toast(e.message); }
+/* ---- selection & batch actions (selection only ever applies to the current tab's items) ---- */
+const selectedVisible = () => newsVisible().filter(n => news.selected.has(n.id)).map(n => n.id);
+function toggleSel(id, on, range) {
+  const ids = newsVisible().map(n => n.id);
+  if (range && news.lastSel != null && ids.includes(news.lastSel)) {  // shift-click: select/clear the whole range
+    const [a, b] = [ids.indexOf(news.lastSel), ids.indexOf(id)].sort((x, y) => x - y);
+    ids.slice(a, b + 1).forEach(i => on ? news.selected.add(i) : news.selected.delete(i));
+  } else on ? news.selected.add(id) : news.selected.delete(id);
+  news.lastSel = id; renderNews();
+}
+function selectAllVisible(on) {
+  newsVisible().forEach(n => on ? news.selected.add(n.id) : news.selected.delete(n.id));
+  news.lastSel = null; renderNews();
+}
+function renderSelectionBar(list) {
+  const n = selectedVisible().length, all = $("newsSelAll");
+  all.checked = list.length > 0 && n === list.length; all.indeterminate = n > 0 && n < list.length; all.disabled = !list.length;
+  $("newsSelLabel").textContent = n ? `${n} selected` : "Select all";
+  $("newsBatch").hidden = !n;
+  $("newsDelSel").textContent = `🗑 Delete selected (${n})`;
+  $("newsDelAll").textContent = `🗑 Delete all (${list.length})`; $("newsDelAll").disabled = !list.length;
+  const tab = { all: "", unread: " unread", relevant: " 🔧 dashboard" }[news.filter];
+  $("newsDelAll").dataset.tip = `Delete all ${list.length}${tab} update${list.length === 1 ? "" : "s"} shown in this tab (you can undo right after)`;
+}
+async function batchRead(read) { const ids = selectedVisible(); if (ids.length) { await setRead(ids, read); } }
+
+async function deleteNotices(ids, allInTab) {
+  if (!ids.length) return;
+  const what = ids.length === 1 ? "this update" : allInTab ? `ALL ${ids.length} updates in this tab` : `${ids.length} selected updates`;
+  if (ids.length > 1 && !confirm(`Delete ${what}?\n\nThey won't come back on later checks. You can undo right after.`)) return;
+  try {
+    await api("/api/notice", { ids, delete: true });
+    ids.forEach(i => { news.open.delete(i); news.selected.delete(i); });
+    applyNews(await api("/api/notices"));
+    toastAction(`Deleted ${ids.length === 1 ? "1 update" : ids.length + " updates"}`, "Undo", async () => {
+      await api("/api/notice", { ids, restore: true }); applyNews(await api("/api/notices")); toast("Restored");
+    });
+  } catch (e) { toast(e.message); }
+}
+/* toast with one action button (e.g. Undo); stays 7s */
+function toastAction(msg, label, fn) {
+  const t = $("toast"); clearTimeout(t._h); hostFloating(t);
+  t.innerHTML = ""; t.append(Object.assign(document.createElement("span"), { textContent: msg }));
+  const b = Object.assign(document.createElement("button"), { textContent: label });
+  b.onclick = () => { t.classList.remove("show", "action"); fn(); };
+  t.append(b); t.classList.add("show", "action");
+  t._h = setTimeout(() => t.classList.remove("show", "action"), 7000);
 }
 async function analyzeNotice(id) {
   const btn = $("an-" + id); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Asking Claude…';
