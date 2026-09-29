@@ -389,6 +389,11 @@ def read_transcript(session_id):
                 o = json.loads(line)
             except ValueError:
                 continue
+            # output of a local slash command (/usage, /cost, /context…) is saved as a system record;
+            # show it like the terminal does, under the command
+            if o.get("type") == "system" and o.get("subtype") == "local_command" and isinstance(o.get("content"), str):
+                msgs.append({"role": "user", "ts": o.get("timestamp"), "blocks": [{"type": "text", "text": o["content"]}], "model": None})
+                continue
             if o.get("type") not in ("user", "assistant") or o.get("isSidechain"):
                 continue
             m = o.get("message") or {}
