@@ -1,0 +1,20 @@
+# systemd user service: starts Claude Workbench when you log in.
+# Install:  cp workbench.service ~/.config/systemd/user/ && systemctl --user daemon-reload
+#           systemctl --user enable --now workbench
+# Logs:     journalctl --user -u workbench -f
+[Unit]
+Description=Claude Workbench (http://127.0.0.1:8765/)
+# After the desktop session so DISPLAY/WAYLAND_DISPLAY exist for "open shell"
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/python3 %h/test/ui-claude/server.py --port 8765
+WorkingDirectory=%h/test/ui-claude
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target
