@@ -1,0 +1,1277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Workbench</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<style>
+:root{
+  --bg:#f7f6f3; --panel:#ffffff; --panel2:#f1efea; --border:#e2dfd8; --text:#1f1e1c; --muted:#6f6b63;
+  --accent:#c96442; --accent-weak:#f5e4dc; --ok:#2f7d4f; --warn:#a4661a; --err:#b3372f;
+  --code:#f3f1ec; --user:#efe9df;
+  --user-bg:#f7dccf; --user-fg:#2e160c; --user-border:#e3a489; --user-shadow:0 2px 6px rgba(201,100,66,.18);
+  --term-bg:#262522; --term-fg:#f1efe9; --term-border:#3b3935; --term-dim:#b9b4aa; --term-accent:#f0a07f; --term-err:#f28b82; --shadow:0 1px 2px rgba(0,0,0,.05);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#1b1a18; --panel:#22211f; --panel2:#2a2926; --border:#3a3834; --text:#ecebe8; --muted:#a19d95;
+  --accent:#e0896a; --accent-weak:#3d2a22; --ok:#6cc08f; --warn:#e0a85a; --err:#ef7d74;
+  --code:#2c2b28; --user:#2f2c27;
+  --user-bg:#4a2e22; --user-fg:#fbeee7; --user-border:#8a5540; --user-shadow:0 2px 8px rgba(0,0,0,.35);
+  --term-bg:#121110; --term-fg:#ecebe8; --term-border:#34322e; --term-dim:#a8a399; --term-accent:#e0896a; --term-err:#ef7d74; --shadow:none;}}
+:root[data-theme="dark"]{
+  --bg:#1b1a18; --panel:#22211f; --panel2:#2a2926; --border:#3a3834; --text:#ecebe8; --muted:#a19d95;
+  --accent:#e0896a; --accent-weak:#3d2a22; --ok:#6cc08f; --warn:#e0a85a; --err:#ef7d74;
+  --code:#2c2b28; --user:#2f2c27;
+  --user-bg:#4a2e22; --user-fg:#fbeee7; --user-border:#8a5540; --user-shadow:0 2px 8px rgba(0,0,0,.35);
+  --term-bg:#121110; --term-fg:#ecebe8; --term-border:#34322e; --term-dim:#a8a399; --term-accent:#e0896a; --term-err:#ef7d74; --shadow:none;}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;
+  display:grid;grid-template-columns:280px 340px 1fr;height:100vh;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--border);background:var(--panel);border-radius:7px;padding:5px 10px}
+button:hover{background:var(--panel2)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary:hover{filter:brightness(1.05)}
+button.danger{color:var(--err)}
+button.ghost{border-color:transparent;background:transparent;padding:3px 6px;color:var(--muted)}
+button.ghost:hover{background:var(--panel2);color:var(--text)}
+button:disabled{opacity:.5;cursor:default}
+input,select,textarea{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:6px 8px;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+.col{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border)}
+.col-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center}
+.col-head h2{font-size:13px;margin:0;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);flex:1;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scroll{overflow:auto;flex:1;min-height:0}
+.search{margin:10px 12px 4px;width:calc(100% - 24px)}
+.item{padding:9px 14px;border-bottom:1px solid var(--border);cursor:pointer}
+.item:hover{background:var(--panel2)}
+.item.active{background:var(--accent-weak);box-shadow:inset 3px 0 0 var(--accent)}
+.item .t{font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .s{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{display:inline-block;font-size:11px;padding:0 6px;border-radius:9px;background:var(--panel2);color:var(--muted);
+  border:1px solid var(--border);margin-left:4px;vertical-align:1px}
+.badge.wt{color:var(--accent);border-color:var(--accent)}
+.badge.dirty{color:var(--warn);border-color:var(--warn)}
+.badge.gone{color:var(--err);border-color:var(--err)}
+#left{background:var(--panel)}
+#mid{background:var(--bg)}
+.brand{font-weight:700;font-size:15px;flex:1}
+.brand span{color:var(--accent)}
+section.wt{border-bottom:1px solid var(--border);padding:10px 12px;background:var(--panel)}
+section.wt summary{cursor:pointer;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.wt-row{display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px dashed var(--border)}
+.wt-row:last-child{border-bottom:0}
+.wt-row .info{flex:1;min-width:0}
+.wt-row .info div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hint{font-size:12px;color:var(--muted)}
+.form-err{font-size:12px;color:var(--err);min-height:1em}
+.summary{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px}
+.summary dt{color:var(--muted)}
+.summary dd{margin:0;font-family:var(--mono);font-size:12.5px;word-break:break-all}
+.note{font-size:12px;border-radius:7px;padding:7px 10px;background:var(--panel2);border:1px solid var(--border)}
+.note.warn{color:var(--warn);border-color:var(--warn)}
+.check{display:flex;gap:6px;align-items:center;font-size:13px}
+/* chat */
+#chat{display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--bg)}
+#chat .col-head{background:var(--panel)}
+#chatTitle{font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#chatSub{font-size:12px;color:var(--muted);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#msgs{flex:1;overflow:auto;padding:18px 0}
+.msg{max-width:860px;margin:0 auto 14px;padding:0 22px}
+.msg .role{font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600;
+  display:flex;align-items:center;gap:6px}
+.msg.assistant .role::before{content:"✳";color:var(--accent);font-size:13px}
+/* your messages: right-aligned accent bubble */
+.msg.user{display:flex;flex-direction:column;align-items:flex-end}
+.msg.user .role{color:var(--accent)}
+.msg.user .role::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.msg.user .bubble{max-width:min(88%,720px);background:var(--user-bg);color:var(--user-fg);border:1px solid var(--user-border);
+  border-radius:14px 14px 4px 14px;padding:10px 14px;white-space:pre-wrap;word-wrap:break-word;box-shadow:var(--user-shadow);font-size:14.5px}
+.bubble details.paste{margin:6px 0;border:1px dashed var(--user-border);border-radius:8px;background:color-mix(in srgb,var(--panel) 60%,transparent);white-space:normal}
+.bubble details.paste summary{cursor:pointer;padding:4px 8px;font-size:12px;color:var(--accent);font-weight:600}
+.bubble details.paste pre{margin:0;padding:6px 10px 8px;font:12px/1.45 var(--mono);white-space:pre-wrap;max-height:300px;overflow:auto;color:var(--text)}
+/* your commands: terminal block (dark in both themes) */
+.term{width:min(88%,720px);background:var(--term-bg);color:var(--term-fg);border:1px solid var(--term-border);border-left:3px solid var(--term-accent);border-radius:10px 10px 4px 10px;
+  font:13px/1.5 var(--mono);overflow:hidden;box-shadow:var(--user-shadow)}
+.term .line{padding:8px 12px;display:flex;gap:8px;white-space:pre-wrap;word-break:break-word}
+.term .ps{color:var(--term-accent);font-weight:700;user-select:none;flex:none}
+.term .kind{margin-left:auto;flex:none;font:600 10px/18px system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--term-dim);
+  border:1px solid var(--term-border);border-radius:5px;padding:0 5px;height:18px}
+.term .out{background:transparent;border:0;border-radius:0;border-top:1px solid var(--term-border);padding:7px 12px;margin:0;white-space:pre-wrap;word-break:break-word;color:var(--term-dim);
+  max-height:320px;overflow:auto;font:12px/1.45 var(--mono)}
+.term .out.err{color:var(--term-err)}
+.term details summary{padding:0 12px 8px;cursor:pointer;color:var(--term-dim);font:12px system-ui,sans-serif}
+.term details pre{margin:0;padding:0 12px 10px;white-space:pre-wrap;color:var(--term-dim);font-size:12px;max-height:300px;overflow:auto}
+.notice{max-width:860px;margin:0 auto 14px;padding:0 22px;font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center}
+.notice::before{content:"";flex:1;height:1px;background:var(--border)}
+.notice::after{content:"";flex:1;height:1px;background:var(--border)}
+.md{word-wrap:break-word}
+.md p{margin:.4em 0}
+.md pre,pre.out{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:10px;overflow:auto;font:12.5px/1.45 var(--mono);white-space:pre}
+.md code{font-family:var(--mono);font-size:.92em;background:var(--code);padding:1px 4px;border-radius:4px}
+.md pre code{background:none;padding:0}
+.md table{border-collapse:collapse}.md td,.md th{border:1px solid var(--border);padding:4px 8px}
+details.tool{border:1px solid var(--border);border-radius:8px;background:var(--panel);margin:6px 0}
+details.tool>summary{padding:6px 10px;cursor:pointer;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+details.tool>summary b{color:var(--text);font-family:var(--mono);font-weight:600}
+details.tool .body{padding:0 10px 10px}
+details.tool pre.out{max-height:360px;margin:6px 0 0;white-space:pre-wrap}
+details.tool.err>summary{color:var(--err)}
+details.think{color:var(--muted);font-size:13px;margin:4px 0}
+details.think summary{cursor:pointer}
+details.think div{white-space:pre-wrap;border-left:2px solid var(--border);padding-left:10px}
+.meta-line{max-width:860px;margin:0 auto 14px;padding:0 22px;font-size:12px;color:var(--muted)}
+.errbox{color:var(--err);white-space:pre-wrap;font-family:var(--mono);font-size:12px}
+.empty{color:var(--muted);text-align:center;padding:40px 20px}
+.composer{border-top:1px solid var(--border);background:var(--panel);padding:10px 14px}
+.composer-inner{max-width:860px;margin:0 auto}
+#prompt{width:100%;resize:none;min-height:60px;max-height:260px;border-radius:10px;padding:10px 12px}
+.bar{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.bar .sp{flex:1}
+.bar label{font-size:12px;color:var(--muted);display:flex;gap:4px;align-items:center}
+.spinner{display:inline-block;width:10px;height:10px;border:2px solid var(--accent);border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-1px}
+@keyframes spin{to{transform:rotate(360deg)}}
+dialog{border:1px solid var(--border);border-radius:12px;background:var(--panel);color:var(--text);padding:0;width:min(560px,92vw)}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+.dlg-head{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center}
+.dlg-head input{flex:1;font-family:var(--mono);font-size:12px}
+.dlg-list{max-height:50vh;overflow:auto}
+.dlg-list div{padding:6px 16px;cursor:pointer}.dlg-list div:hover{background:var(--panel2)}
+.dlg-foot{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+/* groups & tags */
+:root{--c-slate:#64748b;--c-red:#d0463b;--c-orange:#d9731f;--c-amber:#b88a0e;--c-green:#2f8a55;--c-teal:#138a8a;--c-blue:#3569d4;--c-violet:#7c4dd6;--c-pink:#c7427f}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--c-slate:#94a3b8;--c-red:#f07b72;--c-orange:#f2a05c;--c-amber:#e3c052;--c-green:#6cc08f;--c-teal:#4fc4c4;--c-blue:#7ea3f2;--c-violet:#b095f0;--c-pink:#ec8bb8}}
+:root[data-theme="dark"]{--c-slate:#94a3b8;--c-red:#f07b72;--c-orange:#f2a05c;--c-amber:#e3c052;--c-green:#6cc08f;--c-teal:#4fc4c4;--c-blue:#7ea3f2;--c-violet:#b095f0;--c-pink:#ec8bb8}
+.chip{display:inline-flex;align-items:center;gap:3px;font-size:11px;line-height:18px;padding:0 7px;border-radius:9px;
+  color:var(--cc);border:1px solid color-mix(in srgb,var(--cc) 45%,transparent);background:color-mix(in srgb,var(--cc) 12%,transparent);
+  white-space:nowrap;cursor:pointer;user-select:none}
+.chip.on{background:var(--cc);color:var(--panel);border-color:var(--cc)}
+.chip .x{opacity:.7;cursor:pointer}.chip .x:hover{opacity:1}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+#tagFilter{padding:0 12px 8px;display:flex;flex-wrap:wrap;gap:4px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--cc);display:inline-block;flex:none}
+.group-head{display:flex;align-items:center;gap:7px;padding:8px 14px 6px;font-size:12px;font-weight:650;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--muted);cursor:pointer;position:sticky;top:0;background:var(--panel);z-index:1;border-bottom:1px solid var(--border)}
+.group-head .n{font-weight:400;margin-left:auto}
+.group-head .caret{transition:transform .15s;font-size:10px}
+.group.collapsed .caret{transform:rotate(-90deg)}
+.group.collapsed .group-body{display:none}
+.group.drop .group-head{background:var(--accent-weak);color:var(--accent)}
+.item{position:relative}
+.item .edit{position:absolute;right:8px;top:7px;opacity:0}
+.item:hover .edit,.item:focus-within .edit{opacity:1}
+@media (hover:none){.item .edit{opacity:1}}
+.item.dragging{opacity:.4}
+.dlg-body{padding:14px 16px;display:flex;flex-direction:column;gap:12px;max-height:65vh;overflow:auto}
+.dlg-body h3{margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.field{display:flex;flex-direction:column;gap:5px}
+.field>span{font-size:12px;color:var(--muted)}
+.tag-input{display:flex;flex-wrap:wrap;gap:4px;align-items:center;border:1px solid var(--border);border-radius:7px;padding:5px;background:var(--panel)}
+.tag-input input{border:0;flex:1;min-width:120px;padding:2px 4px}
+.mrow{display:flex;gap:6px;align-items:center}
+.mrow input{flex:1;min-width:0}
+.mrow select{width:92px}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);
+  padding:8px 14px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9;max-width:80vw}
+#toast.show{opacity:1}
+/* scrollbars: thin, rounded, theme-aware; brighter while hovering the scroll area, accent while dragging */
+:root{--sb-rest:color-mix(in srgb,var(--muted) 18%,transparent);--sb-thumb:color-mix(in srgb,var(--muted) 38%,transparent);--sb-thumb-hover:color-mix(in srgb,var(--muted) 60%,transparent)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--sb-rest);border-radius:10px;border:3px solid transparent;background-clip:padding-box;min-height:40px}
+*:hover::-webkit-scrollbar-thumb{background-color:var(--sb-thumb)}
+::-webkit-scrollbar-thumb:hover{background-color:var(--sb-thumb-hover)!important;border-width:2px}
+::-webkit-scrollbar-thumb:active{background-color:var(--accent)!important}
+::-webkit-scrollbar-corner{background:transparent}
+::-webkit-scrollbar-button{display:none}
+.term ::-webkit-scrollbar-thumb,.term::-webkit-scrollbar-thumb{background-color:color-mix(in srgb,var(--term-dim) 35%,transparent)}
+@supports not selector(::-webkit-scrollbar){
+  *{scrollbar-width:thin;scrollbar-color:var(--sb-rest) transparent}
+  *:hover{scrollbar-color:var(--sb-thumb) transparent}
+  .term,.term *{scrollbar-color:color-mix(in srgb,var(--term-dim) 45%,transparent) transparent}
+}
+/* scrollbars on the left: rtl puts the bar on the left side, children switch back to normal ltr text */
+.scroll,#msgs,.news-list,.dlg-list,.dlg-body{direction:rtl}
+.scroll>*,#msgs>*,.news-list>*,.dlg-list>*,.dlg-body>*{direction:ltr}
+/* news inbox */
+.bell{position:relative}
+.bell .count{position:absolute;top:-4px;right:-5px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--accent);
+  color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center}
+.news-banner{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--accent-weak);border-bottom:1px solid var(--user-border);
+  color:var(--text);font-size:13px}
+.news-banner b{color:var(--accent)}
+.news-banner .sp{flex:1}
+#newsDlg{width:min(860px,96vw)}
+.news-tools{display:flex;gap:6px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.news-tools .tabs{display:flex;gap:2px;background:var(--panel2);border-radius:8px;padding:2px}
+.news-tools .tabs button{border:0;background:transparent;padding:4px 10px;border-radius:6px;font-size:13px}
+.news-tools .tabs button.on{background:var(--panel);box-shadow:var(--shadow);font-weight:600}
+.news-tools .sp{flex:1}
+.news-meta{font-size:12px;color:var(--muted);padding:0 16px 8px}
+.news-list{max-height:62vh;overflow:auto;padding:4px 16px 16px}
+.ncard{border:1px solid var(--border);border-radius:10px;margin-top:8px;background:var(--panel)}
+.ncard.unread{border-color:var(--user-border);box-shadow:inset 3px 0 0 var(--accent)}
+.ncard .nhead{display:flex;gap:8px;align-items:center;padding:9px 12px;cursor:pointer}
+.ncard .ndot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
+.ncard:not(.unread) .ndot{background:transparent;border:1px solid var(--border)}
+.ncard .ntitle{flex:1;min-width:0;font-weight:500}
+.ncard.unread .ntitle{font-weight:700}
+.ncard .ndate{font-size:12px;color:var(--muted);white-space:nowrap}
+.ncard .nbody{padding:0 14px 12px;border-top:1px solid var(--border);font-size:13.5px}
+.ncard .nbody h4{margin:12px 0 4px;font-size:13px}
+.ncard .nbody ul{padding-left:20px;margin:4px 0}
+.ncard .nactions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.analysis{margin-top:10px;border:1px solid var(--user-border);background:var(--accent-weak);border-radius:8px;padding:8px 12px}
+.analysis .ah{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);font-weight:700}
+.src{--cc:var(--c-slate)}.src.changelog{--cc:var(--c-blue)}.src.version{--cc:var(--c-green)}.src.cli{--cc:var(--c-violet)}.src.format{--cc:var(--c-orange)}
+.chip.rel{--cc:var(--accent)}
+/* tooltip */
+#tip{position:fixed;z-index:20;max-width:320px;padding:6px 9px;border-radius:7px;background:var(--text);color:var(--bg);
+  font-size:12px;line-height:1.4;white-space:pre-line;pointer-events:none;opacity:0;transform:translateY(2px);
+  transition:opacity .12s,transform .12s;box-shadow:0 4px 14px rgba(0,0,0,.18);word-break:break-word}
+#tip.show{opacity:1;transform:none}
+#tip::after{content:"";position:absolute;left:var(--ax,50%);width:8px;height:8px;background:inherit;transform:translateX(-50%) rotate(45deg)}
+#tip.above::after{bottom:-4px}
+#tip.below::after{top:-4px}
+.badge[data-tip],.dot[data-tip],.n[data-tip],.meta-line[data-tip]{cursor:help}
+.item[data-tip],.chip[data-tip],.group-head[data-tip],.dlg-list div[data-tip]{cursor:pointer}
+.mobile-nav{display:none}
+@media (max-width:900px){
+  body{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .mobile-nav{display:flex;gap:6px;padding:8px 16px;border-bottom:1px solid var(--border);background:var(--panel)}
+  .mobile-nav button{flex:1}
+  .col,#chat{display:none;border-right:0}
+  body[data-view="left"] #left,body[data-view="mid"] #mid{display:flex}
+  body[data-view="chat"] #chat{display:flex}
+  .msg,.meta-line{padding:0 16px}
+}
+</style>
+</head>
+<body data-view="left">
+<nav class="mobile-nav">
+  <button onclick="setView('left')" data-tip="Folders you have used Claude in">Projects</button>
+  <button onclick="setView('mid')" data-tip="Chats and git worktrees of the selected project">Sessions</button>
+  <button onclick="setView('chat')" data-tip="The open conversation">Chat</button>
+</nav>
+
+<!-- Projects -->
+<aside class="col" id="left">
+  <div class="col-head">
+    <div class="brand" data-tip="Local web UI for your Claude Code sessions.
+Reads ~/.claude/projects directly; groups &amp; tags are stored in workbench.db."><span>✳</span> Claude Workbench</div>
+    <button class="ghost bell" id="bellBtn" onclick="openNews()" aria-label="Claude Code updates" data-tip="Claude Code updates: new versions, CLI changes and session-format changes that may affect this dashboard">🔔<span class="count" id="bellCount" hidden></span></button>
+    <button class="ghost" data-tip="Manage groups &amp; tags: rename, recolor, reorder, delete" aria-label="Manage groups and tags" onclick="openManage()">⚙</button>
+    <button class="ghost" data-tip="Switch between light and dark theme" aria-label="Toggle theme" onclick="toggleTheme()">◐</button>
+    <button class="ghost" data-tip="Reload projects, sessions, groups and tags from disk" aria-label="Refresh" onclick="loadProjects()">↻</button>
+  </div>
+  <input class="search" id="projSearch" placeholder="Filter projects or #tag…" data-tip="Filter by folder path or tag name.
+Start with # to match tags only, e.g. #java" oninput="renderProjects()">
+  <div style="padding:6px 12px 8px;display:flex;gap:6px">
+    <button style="flex:1" onclick="openBrowse()" data-tip="Pick any folder on your computer and start a new Claude chat there">＋ New chat in folder…</button>
+    <button data-tip="Create a group to organize folders.
+Drag folders onto it, or set it with 🏷" onclick="newGroup()">＋ Group</button>
+  </div>
+  <div id="tagFilter"></div>
+  <div class="scroll" id="projects"></div>
+</aside>
+
+<!-- Sessions + worktrees -->
+<div class="col" id="mid">
+  <div class="col-head">
+    <div style="flex:1;min-width:0">
+      <h2 id="projTitle" data-tip="Select a project on the left">Select a project</h2>
+      <div class="chips" id="projChips"></div>
+    </div>
+    <button class="ghost" id="projEditBtn" hidden data-tip="Edit this folder's group and tags" aria-label="Edit group and tags" onclick="openFolderDlg(state.project.cwd)">🏷</button>
+    <button class="primary" id="newChatBtn" data-tip="Start a new Claude chat in this project folder" disabled onclick="newChat(state.project.cwd)">New chat</button>
+  </div>
+  <section class="wt" id="wtSection" hidden>
+    <details id="wtDetails" open>
+      <summary data-tip="Separate checkouts of this repo, each on its own branch.
+Work on several things in parallel without switching branches.">Git worktrees</summary>
+      <div id="wtList"></div>
+      <button class="primary" style="width:100%;margin-top:8px" onclick="openWtDlg()" data-tip="Create a new git worktree in .claude/worktrees/ — you'll review it before anything runs">＋ New worktree</button>
+    </details>
+  </section>
+  <input class="search" id="sessSearch" placeholder="Search sessions…" data-tip="Search session titles, first and last prompts" oninput="renderSessions()">
+  <div class="scroll" id="sessions"><div class="empty">Pick a project on the left.</div></div>
+</div>
+
+<!-- Chat -->
+<main id="chat">
+  <div class="col-head">
+    <div style="flex:1;min-width:0">
+      <div id="chatTitle" data-tip="Session title (set by Claude or by /rename)">No chat open</div>
+      <div id="chatSub" data-tip="Working folder · session ID"></div>
+    </div>
+    <button class="ghost" id="copyBtn" data-tip="Copy a command that continues this exact chat in your terminal:
+cd <folder> && claude --resume <id>" onclick="copyResume()" hidden>⧉ Terminal cmd</button>
+  </div>
+  <div class="news-banner" id="newsBanner" hidden>
+    <span>🔔</span><span id="newsBannerText"></span><span class="sp"></span>
+    <button class="primary" onclick="openNews('unread')" data-tip="Open the updates inbox, showing unread items">View</button>
+    <button class="ghost" onclick="dismissBanner()" data-tip="Hide this banner until something new arrives (items stay unread in 🔔)" aria-label="Dismiss">✕</button>
+  </div>
+  <div id="msgs"><div class="empty">Open a session to read and continue it, or start a new chat.</div></div>
+  <div class="composer">
+    <div class="composer-inner">
+      <textarea id="prompt" data-tip="Enter sends · Shift+Enter adds a new line" placeholder="Message Claude…  (Enter to send, Shift+Enter for newline)" disabled></textarea>
+      <div class="bar">
+        <label data-tip="Permission mode: what Claude may do without asking.
+In this UI Claude can't ask you, so anything not allowed is denied.">Mode
+          <select id="permMode" data-tip="">
+            <option value="auto" title="Claude decides; safe actions run, risky ones are blocked">auto</option>
+            <option value="default" title="Only read-only tools; anything that would ask for permission is denied">default (asks → denied)</option>
+            <option value="acceptEdits" title="File edits are allowed; other risky actions are denied">acceptEdits</option>
+            <option value="plan" title="Read and plan only — no edits or commands">plan</option>
+            <option value="bypassPermissions" title="Everything is allowed without asking. Use with care!">bypassPermissions</option>
+          </select>
+        </label>
+        <label data-tip="Which Claude model answers the next message">Model
+          <select id="model" data-tip="">
+            <option value="" title="Your Claude Code default model">default</option>
+            <option value="opus" title="Most capable; best for hard tasks">opus</option>
+            <option value="sonnet" title="Fast and capable; good everyday choice">sonnet</option>
+            <option value="haiku" title="Fastest and cheapest; simple tasks">haiku</option>
+            <option value="fable" title="Fable model">fable</option>
+          </select>
+        </label>
+        <label data-tip="How hard Claude thinks before answering (claude --effort).
+Since Claude Code 2.1.280 this is respected in -p mode for every model.">Effort
+          <select id="effort" data-tip="">
+            <option value="" title="The model's / your settings' default effort">default</option>
+            <option value="low" title="Fastest, least thinking — quick questions">low</option>
+            <option value="medium" title="Balanced speed and depth">medium</option>
+            <option value="high" title="More thinking for harder problems">high</option>
+            <option value="xhigh" title="Extra-high thinking — slower, more thorough">xhigh</option>
+            <option value="max" title="Maximum thinking — slowest and most expensive">max</option>
+          </select>
+        </label>
+        <span class="sp"></span>
+        <span id="status" data-tip="What Claude is doing right now" style="font-size:12px;color:var(--muted)"></span>
+        <button id="stopBtn" class="danger" data-tip="Stop Claude's current reply (the partial answer is kept in the session)" hidden onclick="stopRun()">■ Stop</button>
+        <button id="sendBtn" class="primary" data-tip="Send message (Enter)" disabled onclick="send()">Send</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<dialog id="browseDlg">
+  <div class="dlg-head">
+    <button class="ghost" onclick="browseTo(browseState.parent)" data-tip="Go to parent folder" aria-label="Parent folder">↑</button>
+    <input id="browsePath" data-tip="Type or paste a path and press Enter" onkeydown="if(event.key==='Enter')browseTo(this.value)">
+  </div>
+  <div class="dlg-list" id="browseList"></div>
+  <div class="dlg-foot">
+    <button onclick="browseDlg.close()" data-tip="Close without starting a chat">Cancel</button>
+    <button class="primary" onclick="browseDlg.close();newChat(browseState.path)" data-tip="Start a new Claude chat in the folder shown above">Start chat here</button>
+  </div>
+</dialog>
+<dialog id="wtDlg">
+  <div class="dlg-head"><b style="flex:1" id="wtDlgTitle">New worktree</b><button class="ghost" onclick="wtDlg.close()" data-tip="Close (Esc) — nothing is created" aria-label="Close">✕</button></div>
+  <form id="wtStepForm" onsubmit="wtReview(event)" novalidate>
+    <div class="dlg-body">
+      <label class="field"><span>Worktree name *</span>
+        <input id="wtName" data-tip="Folder name of the new worktree. Also used for the default branch name." placeholder="e.g. feature-login" maxlength="80" autocomplete="off">
+        <span class="hint">Letters, numbers, <code>. _ - /</code>. Created in <code id="wtRootHint"></code></span>
+      </label>
+      <label class="field"><span>Branch</span>
+        <input id="wtBranch" data-tip="Type a new branch name, or choose an existing branch to check it out.
+Empty = worktree-<name>" placeholder="" list="wtBranchList" autocomplete="off">
+        <datalist id="wtBranchList"></datalist>
+        <span class="hint">Leave empty for a new branch <code id="wtBranchDefault"></code>, or pick an existing branch to check it out.</span>
+      </label>
+      <label class="field" id="wtBaseField"><span>Based on</span>
+        <select id="wtBase" data-tip="The commit the new branch starts from"></select>
+      </label>
+      <label class="check" data-tip="After creating, open an empty chat whose working folder is the new worktree"><input type="checkbox" id="wtStartChat" checked> Start a new chat in it afterwards</label>
+      <div class="form-err" id="wtFormErr"></div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" onclick="wtDlg.close()" data-tip="Close — nothing is created">Cancel</button>
+      <button class="primary" type="submit" data-tip="Check your input and show a summary to confirm (Enter)">Create…</button>
+    </div>
+  </form>
+  <div id="wtStepConfirm" hidden>
+    <div class="dlg-body">
+      <div>Create this worktree?</div>
+      <dl class="summary" id="wtSummary"></dl>
+      <div id="wtNotes"></div>
+      <div class="form-err" id="wtConfirmErr"></div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" onclick="wtBack()" data-tip="Go back and change the details">← Back</button>
+      <button class="primary" id="wtConfirmBtn" onclick="wtConfirm()" data-tip="Run the git command shown above and create the worktree">Confirm &amp; create</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="folderDlg">
+  <div class="dlg-head"><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="folderDlgTitle"></b></div>
+  <div class="dlg-body">
+    <label class="field"><span>Group</span>
+      <select id="folderGroup" data-tip="A folder can be in one group. Choose “New group…” to create one."></select>
+    </label>
+    <div class="field"><span>Tags — type and press Enter</span>
+      <div class="tag-input" id="folderTagBox" onclick="$('folderTagInput').focus()">
+        <span id="folderTagChips" style="display:contents"></span>
+        <input id="folderTagInput" data-tip="Type a tag and press Enter or comma. Backspace removes the last tag." placeholder="add tag…" maxlength="40">
+      </div>
+      <div class="chips" id="folderTagSuggest"></div>
+    </div>
+  </div>
+  <div class="dlg-foot">
+    <button onclick="folderDlg.close()" data-tip="Discard changes">Cancel</button>
+    <button class="primary" onclick="saveFolder()" data-tip="Save group and tags for this folder">Save</button>
+  </div>
+</dialog>
+
+<dialog id="manageDlg">
+  <div class="dlg-head"><b style="flex:1">Groups &amp; tags</b><button class="ghost" onclick="manageDlg.close()" data-tip="Close (Esc)" aria-label="Close">✕</button></div>
+  <div class="dlg-body">
+    <h3 data-tip="Groups organize the project list. Changes save immediately.">Groups</h3><div id="manageGroups"></div>
+    <div class="mrow"><input id="newGroupName" data-tip="Name of a new group, then press Enter" placeholder="New group name" maxlength="40" onkeydown="if(event.key==='Enter')addGroupFromManage()"><button onclick="addGroupFromManage()" data-tip="Create this group">Add</button></div>
+    <h3 data-tip="Tags are labels on folders. Unused tags are removed automatically.">Tags</h3><div id="manageTags"></div>
+  </div>
+</dialog>
+<dialog id="newsDlg">
+  <div class="dlg-head"><b style="flex:1">🔔 Claude Code updates</b><button class="ghost" onclick="newsDlg.close()" data-tip="Close (Esc)" aria-label="Close">✕</button></div>
+  <div class="news-tools">
+    <div class="tabs" id="newsTabs">
+      <button data-f="all" data-tip="Every update you haven't deleted">All</button>
+      <button data-f="unread" data-tip="Only updates you haven't read yet">Unread</button>
+      <button data-f="relevant" data-tip="Only updates that may need a change in this dashboard (🔧)">🔧 Dashboard</button>
+    </div>
+    <span class="sp"></span>
+    <button id="newsCheckBtn" onclick="checkNews()" data-tip="Check now: changelog, installed version, CLI options and session-file format.&#10;Also runs automatically every 6 hours while the server is running.">↻ Check now</button>
+    <button onclick="markAllRead()" data-tip="Mark every visible update as read">✓ Mark all read</button>
+  </div>
+  <div class="news-meta" id="newsMeta"></div>
+  <div class="news-list" id="newsList"></div>
+</dialog>
+<div id="toast" role="status"></div>
+<div id="tip" role="tooltip"></div>
+
+<script>
+const TOKEN = "__TOKEN__";
+const state = { projects: [], project: null, sessions: [], session: null, cwd: null, run: null, busy: false, repo: null };
+const $ = id => document.getElementById(id);
+const store = { get(k){try{return localStorage.getItem(k)}catch{return null}}, set(k,v){try{localStorage.setItem(k,v)}catch{}} };
+
+async function api(path, body) {
+  const r = await fetch(path, { method: body ? "POST" : "GET", headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function md(text) {
+  if (window.marked && window.DOMPurify) return DOMPurify.sanitize(marked.parse(text || ""));
+  return `<p style="white-space:pre-wrap">${esc(text)}</p>`;
+}
+function ago(t) {
+  const s = (Date.now() / 1000 - t);
+  if (s < 60) return "just now"; if (s < 3600) return Math.floor(s/60) + "m ago";
+  if (s < 86400) return Math.floor(s/3600) + "h ago"; if (s < 86400*30) return Math.floor(s/86400) + "d ago";
+  return new Date(t*1000).toLocaleDateString();
+}
+const tilde = p => (p || "").replace(/^\/home\/[^/]+/, "~");
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2500); }
+function setView(v) { document.body.dataset.view = v; }
+function toggleTheme() {
+  const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next; store.set("theme", next);
+}
+if (store.get("theme")) document.documentElement.dataset.theme = store.get("theme");
+
+/* ---------- tooltips: any element with data-tip="…" (works for dynamic content too) ---------- */
+const tipEl = $("tip"); let tipTarget = null, tipTimer = null;
+const tipAttr = s => esc(s).replace(/\n/g, "&#10;");  // for building data-tip="" inside template strings
+function showTip(el, delay) {
+  clearTimeout(tipTimer);
+  tipTimer = setTimeout(() => {
+    const text = el.dataset.tip;
+    if (!text || !el.isConnected) return;
+    tipTarget = el; tipEl.textContent = text;
+    tipEl.className = ""; tipEl.style.left = "0px"; tipEl.style.top = "0px";
+    const r = el.getBoundingClientRect(), t = tipEl.getBoundingClientRect(), m = 8;
+    const above = r.top - t.height - m > 4;
+    let left = Math.min(Math.max(4, r.left + r.width / 2 - t.width / 2), innerWidth - t.width - 4);
+    tipEl.style.left = left + "px";
+    tipEl.style.top = (above ? r.top - t.height - m : r.bottom + m) + "px";
+    tipEl.style.setProperty("--ax", Math.min(Math.max(10, r.left + r.width / 2 - left), t.width - 10) + "px");
+    tipEl.classList.add(above ? "above" : "below", "show");
+    el.setAttribute("aria-describedby", "tip");
+  }, delay);
+}
+function hideTip() {
+  clearTimeout(tipTimer);
+  if (tipTarget) tipTarget.removeAttribute("aria-describedby");
+  tipTarget = null; tipEl.classList.remove("show");
+}
+document.addEventListener("mouseover", e => {
+  const el = e.target.closest?.("[data-tip],[title]");
+  if (el?.hasAttribute("title")) { el.dataset.tip ??= el.title; el.removeAttribute("title"); }
+  if (el === tipTarget) return;
+  if (el) showTip(el, tipTarget ? 80 : 400); else hideTip();
+});
+document.addEventListener("focusin", e => { const el = e.target.closest?.("[data-tip]"); if (el && e.target.matches(":focus-visible")) showTip(el, 150); });
+document.addEventListener("focusout", hideTip);
+document.addEventListener("mousedown", hideTip);
+document.addEventListener("keydown", e => { if (e.key === "Escape") hideTip(); });
+addEventListener("scroll", hideTip, true);
+addEventListener("blur", hideTip);
+
+/* ---------- projects ---------- */
+state.meta = { groups: [], tags: [], folders: {}, colors: [] };
+state.tagFilter = new Set(JSON.parse(store.get("tagFilter") || "[]"));
+const collapsed = new Set(JSON.parse(store.get("collapsed") || "[]"));
+
+async function loadProjects() {
+  try {
+    const [projects, meta] = await Promise.all([api("/api/projects"), api("/api/meta")]);
+    state.projects = projects; state.meta = meta;
+  } catch (e) { toast(e.message); return; }
+  for (const id of [...state.tagFilter]) if (!state.meta.tags.some(t => t.id === id)) state.tagFilter.delete(id);
+  renderProjects();
+  if (state.project) { state.project = state.projects.find(p => p.key === state.project.key) || state.project; renderProjChips(); }
+  else {
+    const last = store.get("project"); const p = state.projects.find(x => x.key === last);
+    if (p) selectProject(p.key, true);
+  }
+}
+async function reloadMeta() {
+  try { state.meta = await api("/api/meta"); } catch (e) { toast(e.message); return; }
+  renderProjects(); renderProjChips();
+  if (manageDlg.open) renderManage();
+}
+const folderOf = cwd => state.meta.folders[cwd] || { group: null, tags: [] };
+const tagById = id => state.meta.tags.find(t => t.id === id);
+const tagUses = id => Object.values(state.meta.folders).filter(f => f.tags.includes(id)).length;
+const WT_BADGE_TIP = "This folder is a git worktree created by Claude Code (inside .claude/worktrees/)";
+const MISSING_TIP = "This folder no longer exists on disk (deleted, moved or renamed).\nOld chats can still be read, but new chats can't run here.";
+const chip = (t, extra = "", tip = `Tag: ${t.name}`) => `<span class="chip" style="--cc:var(--c-${t.color})" data-tip="${tipAttr(tip)}" ${extra}>${esc(t.name)}</span>`;
+
+function renderTagFilter() {
+  $("tagFilter").innerHTML = state.meta.tags.map(t =>
+    `<span class="chip ${state.tagFilter.has(t.id) ? "on" : ""}" style="--cc:var(--c-${t.color})" onclick="toggleTagFilter(${t.id})" data-tip="${tipAttr(state.tagFilter.has(t.id) ? `Filtering by #${t.name} — click to remove this filter` : `Show only folders tagged #${t.name} (${tagUses(t.id)} folder${tagUses(t.id) === 1 ? "" : "s"})\nSelect several to require all of them`)}">#${esc(t.name)}</span>`).join("")
+    + (state.tagFilter.size ? `<button class="ghost" style="font-size:11px" data-tip="Remove all tag filters" onclick="state.tagFilter.clear();saveTagFilter()">clear</button>` : "");
+}
+function toggleTagFilter(id) { state.tagFilter.has(id) ? state.tagFilter.delete(id) : state.tagFilter.add(id); saveTagFilter(); }
+function saveTagFilter() { store.set("tagFilter", JSON.stringify([...state.tagFilter])); renderProjects(); }
+
+function projectMatches(p) {
+  const f = folderOf(p.cwd);
+  for (const id of state.tagFilter) if (!f.tags.includes(id)) return false;
+  const q = $("projSearch").value.trim().toLowerCase();
+  if (!q) return true;
+  const tagNames = f.tags.map(id => tagById(id)?.name.toLowerCase() || "");
+  if (q.startsWith("#")) return tagNames.some(n => n.startsWith(q.slice(1)));
+  return p.cwd.toLowerCase().includes(q) || tagNames.some(n => n.includes(q));
+}
+function projectItem(p) {
+  const name = p.cwd.split("/").filter(Boolean).pop() || "/";
+  const tags = folderOf(p.cwd).tags.map(tagById).filter(Boolean);
+  const tip = `${p.cwd}\n${p.sessions} session${p.sessions === 1 ? "" : "s"} · last used ${new Date(p.mtime * 1000).toLocaleString()}\nClick to open · drag onto a group to move it`;
+  return `<div class="item ${state.project?.key === p.key ? "active" : ""}" draggable="true" data-cwd="${esc(p.cwd)}" data-tip="${tipAttr(tip)}"
+      onclick="selectProject('${esc(p.key)}')" ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')">
+    <button class="ghost edit" data-tip="Set group and tags for this folder" aria-label="Edit group and tags" onclick='event.stopPropagation();openFolderDlg(${JSON.stringify(p.cwd)})'>🏷</button>
+    <div class="t">${esc(name)}${p.isWorktree ? `<span class="badge wt" data-tip="${WT_BADGE_TIP}">worktree</span>` : ""}${p.exists ? "" : `<span class="badge gone" data-tip="${MISSING_TIP}">missing</span>`}</div>
+    <div class="s">${esc(tilde(p.cwd))}</div>
+    <div class="s">${p.sessions} session${p.sessions === 1 ? "" : "s"} · ${ago(p.mtime)}</div>
+    ${tags.length ? `<div class="chips">${tags.map(t => chip(t)).join("")}</div>` : ""}</div>`;
+}
+function renderProjects() {
+  renderTagFilter();
+  const visible = state.projects.filter(projectMatches);
+  const sections = [...state.meta.groups.map(g => ({ id: g.id, name: g.name, color: g.color })), { id: 0, name: "Ungrouped", color: "slate" }];
+  const filtering = state.tagFilter.size || $("projSearch").value.trim();
+  if (!state.meta.groups.length) {  // no groups yet: plain list
+    $("projects").innerHTML = visible.map(projectItem).join("") || '<div class="empty">No projects match.</div>';
+    return;
+  }
+  const html = sections.map(g => {
+    const items = visible.filter(p => (folderOf(p.cwd).group || 0) === g.id);
+    if (!items.length && (filtering || g.id === 0)) return "";
+    const isCollapsed = collapsed.has(g.id) && !filtering;
+    return `<div class="group ${isCollapsed ? "collapsed" : ""}" data-group="${g.id}"
+        ondragover="dragOver(event)" ondragleave="this.classList.remove('drop')" ondrop="dropOn(event, ${g.id})">
+      <div class="group-head" onclick="toggleGroup(${g.id})" data-tip="${tipAttr(`${g.id ? "Group" : "Folders without a group"}: ${g.name}\nClick to ${isCollapsed ? "expand" : "collapse"} · drop a folder here to move it`)}"><span class="caret">▼</span><span class="dot" style="--cc:var(--c-${g.color})" data-tip="Group color: ${g.color} (change it in ⚙)"></span>${esc(g.name)}<span class="n" data-tip="${items.length} folder${items.length === 1 ? "" : "s"}${filtering ? " match the filter" : ""}">${items.length}</span></div>
+      <div class="group-body">${items.map(projectItem).join("") || '<div class="s" style="padding:8px 14px;color:var(--muted);font-size:12px" data-tip="Drag a folder from another group, or use 🏷 on a folder">Drag folders here</div>'}</div></div>`;
+  }).join("");
+  $("projects").innerHTML = html || '<div class="empty">No projects match.</div>';
+}
+function toggleGroup(id) { collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id); store.set("collapsed", JSON.stringify([...collapsed])); renderProjects(); }
+
+/* drag a folder onto a group header/body to move it */
+function dragStart(e) { e.dataTransfer.setData("text/plain", e.currentTarget.dataset.cwd); e.dataTransfer.effectAllowed = "move"; e.currentTarget.classList.add("dragging"); }
+function dragOver(e) { e.preventDefault(); e.currentTarget.classList.add("drop"); }
+async function dropOn(e, gid) {
+  e.preventDefault(); e.currentTarget.classList.remove("drop");
+  const cwd = e.dataTransfer.getData("text/plain"); if (!cwd) return;
+  try { await api("/api/folder", { cwd, group: gid || null }); await reloadMeta(); } catch (err) { toast(err.message); }
+}
+
+async function newGroup() {
+  const name = prompt("New group name:"); if (!name?.trim()) return;
+  try { await api("/api/group", { name }); await reloadMeta(); } catch (e) { toast(e.message); }
+}
+
+/* folder dialog: set group + tags */
+const folderDlg = $("folderDlg"); let folderEdit = null;
+function openFolderDlg(cwd) {
+  const f = folderOf(cwd);
+  folderEdit = { cwd, tags: f.tags.map(id => tagById(id)?.name).filter(Boolean) };
+  $("folderDlgTitle").textContent = tilde(cwd);
+  fillGroupSelect(f.group);
+  $("folderTagInput").value = ""; renderFolderTags(); folderDlg.showModal(); $("folderTagInput").focus();
+}
+function fillGroupSelect(selected) {
+  $("folderGroup").innerHTML = `<option value="">— No group —</option>` +
+    state.meta.groups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join("") +
+    `<option value="new">＋ New group…</option>`;
+  $("folderGroup").value = selected || "";
+}
+$("folderGroup").addEventListener("change", async e => {
+  if (e.target.value !== "new") return;
+  const name = prompt("New group name:");
+  if (!name?.trim()) { e.target.value = ""; return; }
+  try {
+    const r = await api("/api/group", { name });
+    state.meta = await api("/api/meta"); fillGroupSelect(r.id); renderProjects();
+  } catch (err) { toast(err.message); e.target.value = ""; }
+});
+function renderFolderTags() {
+  const colorOf = n => state.meta.tags.find(t => t.name.toLowerCase() === n.toLowerCase())?.color || "slate";
+  $("folderTagChips").innerHTML = folderEdit.tags.map((n, i) =>
+    `<span class="chip" style="--cc:var(--c-${colorOf(n)})" data-tip="${tipAttr(`Tag: ${n}`)}">${esc(n)}<span class="x" data-tip="Remove this tag from the folder" onclick="event.stopPropagation();folderEdit.tags.splice(${i},1);renderFolderTags()">×</span></span>`).join("");
+  const have = new Set(folderEdit.tags.map(n => n.toLowerCase()));
+  const sugg = state.meta.tags.filter(t => !have.has(t.name.toLowerCase()));
+  $("folderTagSuggest").innerHTML = sugg.length ? `<span style="font-size:11px;color:var(--muted)" data-tip="Tags you already use on other folders">Existing:</span>` +
+    sugg.map(t => chip(t, `onclick='addFolderTag(${JSON.stringify(t.name)})'`, `Click to add tag “${t.name}”`)).join("") : "";
+}
+function addFolderTag(name) {
+  name = name.trim().replace(/^#/, "").slice(0, 40);
+  if (name && !folderEdit.tags.some(n => n.toLowerCase() === name.toLowerCase())) folderEdit.tags.push(name);
+  renderFolderTags();
+}
+$("folderTagInput").addEventListener("keydown", e => {
+  if ((e.key === "Enter" || e.key === ",") && !e.isComposing) { e.preventDefault(); addFolderTag(e.target.value); e.target.value = ""; }
+  else if (e.key === "Backspace" && !e.target.value && folderEdit.tags.length) { folderEdit.tags.pop(); renderFolderTags(); }
+});
+async function saveFolder() {
+  const pending = $("folderTagInput").value; if (pending.trim()) addFolderTag(pending);
+  const g = $("folderGroup").value;
+  try {
+    await api("/api/folder", { cwd: folderEdit.cwd, group: g && g !== "new" ? +g : null, tags: folderEdit.tags });
+    folderDlg.close(); await reloadMeta();
+  } catch (e) { toast(e.message); }
+}
+
+/* manage dialog: rename / recolor / reorder / delete */
+const manageDlg = $("manageDlg");
+function openManage() { renderManage(); manageDlg.showModal(); }
+const colorSelect = (cur, onchange) => `<select data-tip="Color" onchange="${onchange}">${state.meta.colors.map(c => `<option ${c === cur ? "selected" : ""}>${c}</option>`).join("")}</select>`;
+function renderManage() {
+  const g = state.meta.groups;
+  $("manageGroups").innerHTML = g.map((x, i) => `<div class="mrow" style="margin-bottom:6px">
+      <span class="dot" style="--cc:var(--c-${x.color})" data-tip="Group color"></span>
+      <input value="${esc(x.name)}" maxlength="40" data-tip="Group name — edit and press Enter or click away to save" onchange="saveGroup(${x.id}, this.value, null)">
+      ${colorSelect(x.color, `saveGroup(${x.id}, null, this.value)`)}
+      <button class="ghost" ${i ? "" : "disabled"} data-tip="Move group up in the list" aria-label="Move up" onclick="moveGroup(${x.id},-1)">↑</button>
+      <button class="ghost" ${i < g.length - 1 ? "" : "disabled"} data-tip="Move group down in the list" aria-label="Move down" onclick="moveGroup(${x.id},1)">↓</button>
+      <button class="ghost danger" data-tip="Delete group — its folders move to Ungrouped (nothing on disk is touched)" aria-label="Delete group" onclick="delGroup(${x.id})">✕</button></div>`).join("")
+    || '<div style="color:var(--muted);font-size:13px">No groups yet.</div>';
+  $("manageTags").innerHTML = state.meta.tags.map(t => {
+    const uses = tagUses(t.id);
+    return `<div class="mrow" style="margin-bottom:6px">
+      <span class="dot" style="--cc:var(--c-${t.color})" data-tip="Tag color"></span>
+      <input value="${esc(t.name)}" maxlength="40" data-tip="Tag name — rename it on every folder at once" onchange="saveTag(${t.id}, this.value, null)">
+      ${colorSelect(t.color, `saveTag(${t.id}, null, this.value)`)}
+      <span style="font-size:12px;color:var(--muted);width:52px;text-align:right" data-tip="Number of folders with this tag">${uses} folder${uses === 1 ? "" : "s"}</span>
+      <button class="ghost danger" data-tip="Delete this tag from all folders" aria-label="Delete tag" onclick="delTag(${t.id})">✕</button></div>`;
+  }).join("") || '<div style="color:var(--muted);font-size:13px">No tags yet — add them with 🏷 on a folder.</div>';
+}
+async function saveGroup(id, name, color) {
+  const g = state.meta.groups.find(x => x.id === id);
+  try { await api("/api/group", { id, name: name ?? g.name, color: color ?? g.color }); } catch (e) { toast(e.message); }
+  reloadMeta();
+}
+async function saveTag(id, name, color) {
+  const t = tagById(id);
+  try { await api("/api/tag", { id, name: name ?? t.name, color: color ?? t.color }); } catch (e) { toast(e.message); }
+  reloadMeta();
+}
+async function moveGroup(id, dir) { await api("/api/group/move", { id, dir }); reloadMeta(); }
+async function delGroup(id) {
+  if (!confirm("Delete this group? Its folders move to Ungrouped.")) return;
+  await api("/api/group/delete", { id }); collapsed.delete(id); reloadMeta();
+}
+async function delTag(id) {
+  if (!confirm(`Delete tag "${tagById(id).name}" from all folders?`)) return;
+  await api("/api/tag/delete", { id }); state.tagFilter.delete(id); reloadMeta();
+}
+async function addGroupFromManage() {
+  const el = $("newGroupName"); if (!el.value.trim()) return;
+  try { await api("/api/group", { name: el.value }); el.value = ""; reloadMeta(); } catch (e) { toast(e.message); }
+}
+
+function renderProjChips() {
+  if (!state.project) return;
+  const f = folderOf(state.project.cwd); const g = state.meta.groups.find(x => x.id === f.group);
+  $("projChips").innerHTML = (g ? `<span class="chip" style="--cc:var(--c-${g.color})" data-tip="${tipAttr(`Group: ${g.name} — click to edit`)}" onclick="openFolderDlg(state.project.cwd)">▣ ${esc(g.name)}</span>` : "") +
+    f.tags.map(tagById).filter(Boolean).map(t => chip(t, `onclick="openFolderDlg(state.project.cwd)"`, `Tag: ${t.name} — click to edit`)).join("");
+}
+async function selectProject(key, keepView) {
+  state.project = state.projects.find(p => p.key === key); store.set("project", key);
+  renderProjects(); renderProjChips(); $("projEditBtn").hidden = false;
+  $("projTitle").textContent = tilde(state.project.cwd);
+  $("projTitle").dataset.tip = state.project.cwd + (state.project.exists ? "" : "\n⚠ This folder no longer exists");
+  $("newChatBtn").dataset.tip = state.project.exists ? "Start a new Claude chat in this project folder" : "Folder no longer exists — can't start a chat here";
+  $("newChatBtn").disabled = !state.project.exists;
+  $("sessions").innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+  if (!keepView) setView("mid");
+  loadRepo(state.project.cwd);
+  try { state.sessions = await api("/api/sessions?project=" + encodeURIComponent(key)); } catch (e) { toast(e.message); state.sessions = []; }
+  renderSessions();
+}
+function renderSessions() {
+  const q = $("sessSearch").value.toLowerCase();
+  const list = state.sessions.filter(s => !q || (s.title + " " + (s.firstPrompt || "") + " " + (s.lastPrompt || "")).toLowerCase().includes(q));
+  $("sessions").innerHTML = list.map(s => {
+    const tip = `${s.title}\nSession ${s.id}\nLast active ${new Date(s.mtime * 1000).toLocaleString()} · ${s.messages} messages` +
+      (s.gitBranch && s.gitBranch !== "HEAD" ? `\nGit branch: ${s.gitBranch}` : "") + (s.cost ? `\nCost so far: $${s.cost.toFixed(4)}` : "") +
+      (s.firstPrompt ? `\n\nFirst prompt: ${s.firstPrompt.slice(0, 160)}` : "") + "\n\nClick to open and continue";
+    return `<div class="item ${state.session === s.id ? "active" : ""}" onclick="openSession('${s.id}')" data-tip="${tipAttr(tip)}">
+      <div class="t">${esc(s.title)}</div>
+      <div class="s">${ago(s.mtime)} · ${s.messages} msgs${s.gitBranch && s.gitBranch !== "HEAD" ? " · ⎇ " + esc(s.gitBranch) : ""}${s.cost ? " · $" + s.cost.toFixed(2) : ""}</div>
+      ${s.lastPrompt ? `<div class="s">↳ ${esc(s.lastPrompt)}</div>` : ""}</div>`;
+  }).join("")
+    || '<div class="empty">No sessions yet.</div>';
+}
+
+/* ---------- worktrees ---------- */
+async function loadRepo(cwd) {
+  $("wtSection").hidden = true; state.repo = null;
+  let info; try { info = await api("/api/repo?cwd=" + encodeURIComponent(cwd)); } catch { return; }
+  if (!info.isRepo || state.project?.cwd !== cwd) return;
+  state.repo = info; $("wtSection").hidden = false;
+  $("wtList").innerHTML = info.worktrees.map((w, i) => {
+    const proj = state.projects.find(p => p.cwd === w.path);
+    return `<div class="wt-row"><div class="info">
+        <div><b data-tip="${tipAttr(w.branch ? `Branch checked out here: ${w.branch} (commit ${w.head})` : `Detached HEAD at commit ${w.head} — not on any branch`)}">${esc(w.branch || (w.detached ? "detached @" + w.head : w.head))}</b>${i === 0 ? '<span class="badge" data-tip="The main working tree (the original clone). It can\'t be removed here.">main</span>' : ""}${w.dirty ? '<span class="badge dirty" data-tip="Has uncommitted or untracked changes.\nRemoving this worktree would lose them.">changes</span>' : ""}${w.path === state.project.cwd ? '<span class="badge wt" data-tip="This is the folder of the project you selected">here</span>' : ""}</div>
+        <div class="s" style="color:var(--muted);font-size:12px" data-tip="${tipAttr(w.path)}">${esc(tilde(w.path))}</div></div>
+      ${proj && proj.key !== state.project.key ? `<button class="ghost" data-tip="Show the chats that were run in this worktree" aria-label="Show sessions" onclick="selectProject('${esc(proj.key)}')">☰</button>` : ""}
+      <button class="ghost" data-tip="Start a new Claude chat in this worktree" aria-label="New chat here" onclick='newChat(${JSON.stringify(w.path)})'>💬</button>
+      ${i > 0 ? `<button class="ghost" data-tip="${w.dirty ? "Remove this worktree folder — ⚠ its uncommitted changes will be lost (you'll be asked first)" : "Remove this worktree folder (the branch is kept). You'll be asked first."}" aria-label="Remove worktree" onclick='removeWorktree(${JSON.stringify(w.path)}, ${w.dirty})'>✕</button>` : ""}
+    </div>`;
+  }).join("");
+}
+
+/* new-worktree modal: step 1 = inputs, step 2 = review & confirm */
+const wtDlg = $("wtDlg"); let wtPlan = null;
+const WT_NAME_RE = /^[A-Za-z0-9._\/-]+$/;
+const wtDefaultBranch = name => "worktree-" + name.replace(/\//g, "-");
+function openWtDlg() {
+  const info = state.repo; if (!info) return;
+  $("wtStepForm").reset(); $("wtStartChat").checked = true;
+  $("wtRootHint").textContent = tilde(info.root) + "/.claude/worktrees/";
+  $("wtBranchList").innerHTML = info.branches.map(b => `<option value="${esc(b)}">`).join("");
+  $("wtBase").innerHTML = `<option value="">HEAD${info.current ? " (" + esc(info.current) + ")" : ""}</option>` +
+    info.branches.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join("");
+  wtShowStep("form"); wtSyncHints(); wtDlg.showModal(); $("wtName").focus();
+}
+function wtShowStep(step) {
+  $("wtStepForm").hidden = step !== "form"; $("wtStepConfirm").hidden = step !== "confirm";
+  $("wtDlgTitle").textContent = step === "form" ? "New worktree" : "Confirm new worktree";
+  $("wtFormErr").textContent = ""; $("wtConfirmErr").textContent = "";
+}
+function wtSyncHints() {
+  const name = $("wtName").value.trim(), branch = $("wtBranch").value.trim();
+  $("wtBranch").placeholder = name ? wtDefaultBranch(name) : "worktree-<name>";
+  $("wtBranchDefault").textContent = name ? wtDefaultBranch(name) : "worktree-<name>";
+  // an existing branch is checked out as-is, so "based on" doesn't apply
+  $("wtBaseField").hidden = state.repo.branches.includes(branch);
+}
+$("wtName").addEventListener("input", wtSyncHints);
+$("wtBranch").addEventListener("input", wtSyncHints);
+
+function wtReview(ev) {
+  ev.preventDefault();
+  const info = state.repo, name = $("wtName").value.trim();
+  const branchInput = $("wtBranch").value.trim();
+  const err = m => { $("wtFormErr").textContent = m; };
+  if (!name) return err("Please enter a worktree name.");
+  if (!WT_NAME_RE.test(name) || name.includes("..")) return err("Name can only contain letters, numbers, . _ - / (no \"..\").");
+  const branch = branchInput || wtDefaultBranch(name);
+  if (!WT_NAME_RE.test(branch) || branch.startsWith("-")) return err("Invalid branch name.");
+  const path = info.root + "/.claude/worktrees/" + name;
+  if (info.worktrees.some(w => w.path === path)) return err("A worktree with this name already exists.");
+
+  const existing = info.branches.includes(branch);
+  const base = existing ? "" : $("wtBase").value;
+  const usedBy = info.worktrees.find(w => w.branch === branch);
+  wtPlan = { name, branch: branchInput, base, path, startChat: $("wtStartChat").checked };
+
+  const q = s => /^[\w.\/-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`;
+  const cmd = existing ? `git worktree add ${q(path)} ${q(branch)}`
+                       : `git worktree add -b ${q(branch)} ${q(path)}${base ? " " + q(base) : ""}`;
+  $("wtSummary").innerHTML = `
+    <dt>Repository</dt><dd>${esc(tilde(info.root))}</dd>
+    <dt>Folder</dt><dd>${esc(tilde(path))}</dd>
+    <dt>Branch</dt><dd>${esc(branch)} ${existing ? "(existing)" : "(new)"}</dd>
+    ${existing ? "" : `<dt>Based on</dt><dd>${esc(base || "HEAD" + (info.current ? " (" + info.current + ")" : ""))}</dd>`}
+    <dt>Afterwards</dt><dd style="font-family:inherit">${wtPlan.startChat ? "Open a new chat in it" : "Nothing"}</dd>
+    <dt>Command</dt><dd>${esc(cmd)}</dd>`;
+  $("wtNotes").innerHTML = usedBy
+    ? `<div class="note warn">⚠ Branch <b>${esc(branch)}</b> is already checked out at ${esc(tilde(usedBy.path))}. Git will refuse to check it out twice — go back and choose another branch.</div>`
+    : `<div class="note">Your current folder and branch are not changed; the worktree is a separate checkout.</div>`;
+  $("wtConfirmBtn").disabled = !!usedBy;
+  wtShowStep("confirm"); $("wtConfirmBtn").focus();
+}
+function wtBack() { wtShowStep("form"); $("wtName").focus(); }
+async function wtConfirm() {
+  const btn = $("wtConfirmBtn"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Creating…';
+  try {
+    const r = await api("/api/worktree", { cwd: state.project.cwd, name: wtPlan.name, branch: wtPlan.branch, base: wtPlan.base });
+    wtDlg.close(); toast("Created " + tilde(r.path) + " on " + r.branch);
+    await loadRepo(state.project.cwd);
+    if (wtPlan.startChat) newChat(r.path);
+  } catch (e) { $("wtConfirmErr").textContent = "Error: " + e.message; }
+  btn.disabled = false; btn.textContent = "Confirm & create";
+}
+async function removeWorktree(path, dirty) {
+  if (!confirm(`Remove worktree ${path}?` + (dirty ? "\n\nIt has UNCOMMITTED CHANGES that will be lost." : ""))) return;
+  try { await api("/api/worktree/remove", { cwd: state.project.cwd, path, force: dirty }); toast("Removed"); loadRepo(state.project.cwd); }
+  catch (e) { toast("Error: " + e.message); }
+}
+
+/* ---------- browse ---------- */
+const browseDlg = $("browseDlg"); const browseState = {};
+async function openBrowse() { await browseTo(state.project?.exists ? state.project.cwd : ""); browseDlg.showModal(); }
+async function browseTo(path) {
+  try { Object.assign(browseState, await api("/api/browse?path=" + encodeURIComponent(path || ""))); } catch (e) { toast(e.message); return; }
+  $("browsePath").value = browseState.path;
+  $("browsePath").dataset.tip = (browseState.isRepo ? "📦 This folder is a git repository\n" : "") + "Type or paste a path and press Enter";
+  $("browseList").innerHTML = browseState.dirs.map(d => `<div data-tip="Open ${esc(d)}" onclick='browseTo(${JSON.stringify(browseState.path.replace(/\/$/, "") + "/" + d)})'>📁 ${esc(d)}</div>`).join("") || '<div class="empty">No subfolders</div>';
+}
+
+/* ---------- chat ---------- */
+function setChatHeader(title, cwd, id) {
+  $("chatTitle").textContent = title; $("chatSub").textContent = tilde(cwd) + (id ? "  ·  " + id : "  ·  new session");
+  $("chatTitle").dataset.tip = title;
+  $("chatSub").dataset.tip = `Working folder: ${cwd}\n` + (id ? `Session ID: ${id}` : "New session — an ID is assigned when you send the first message");
+  $("copyBtn").hidden = !id; $("prompt").disabled = false; $("sendBtn").disabled = false;
+}
+function newChat(cwd) {
+  if (state.busy) return toast("Wait for the current reply to finish");
+  state.session = null; state.cwd = cwd; renderSessions();
+  setChatHeader("New chat", cwd, null);
+  $("msgs").innerHTML = `<div class="empty">New Claude session in <code>${esc(tilde(cwd))}</code></div>`;
+  setView("chat"); $("prompt").focus();
+}
+async function openSession(id) {
+  if (state.busy) return toast("Wait for the current reply to finish");
+  state.session = id; renderSessions(); setView("chat");
+  $("msgs").innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+  let data; try { data = await api("/api/session?id=" + id); } catch (e) { $("msgs").innerHTML = `<div class="empty errbox">${esc(e.message)}</div>`; return; }
+  state.cwd = data.meta.cwd || state.project.cwd;
+  setChatHeader(data.meta.title, state.cwd, id);
+  $("msgs").innerHTML = "";
+  for (const m of data.messages) renderMessage(m.role, m.blocks, m.ts);
+  scrollDown(true);
+}
+function scrollDown(force) {
+  const el = $("msgs"); if (force || el.scrollHeight - el.scrollTop - el.clientHeight < 200) el.scrollTop = el.scrollHeight;
+}
+function toolSummary(name, input) {
+  input = input || {};
+  const v = input.command || input.file_path || input.pattern || input.url || input.path || input.description || input.query || input.prompt;
+  return v ? String(v).split("\n")[0].slice(0, 140) : "";
+}
+function toolEl(b) {
+  const d = document.createElement("details"); d.className = "tool"; d.dataset.toolId = b.id || "";
+  d.innerHTML = `<summary data-tip="${tipAttr(`Tool call: ${b.name}\n${toolSummary(b.name, b.input)}\nClick to show input and output`)}">⚙ <b>${esc(b.name)}</b> ${esc(toolSummary(b.name, b.input))}</summary>
+    <div class="body"><pre class="out">${esc(JSON.stringify(b.input, null, 2))}</pre></div>`;
+  return d;
+}
+function attachResult(b, container) {
+  const pre = document.createElement("pre"); pre.className = "out"; pre.textContent = b.text || "(no output)";
+  const target = b.id && document.querySelector(`details.tool[data-tool-id="${CSS.escape(b.id)}"]`);
+  if (target) { target.querySelector(".body").appendChild(pre); if (b.isError) target.classList.add("err"); return; }
+  const d = document.createElement("details"); d.className = "tool" + (b.isError ? " err" : "");
+  d.innerHTML = `<summary data-tip="Output of a tool call — click to show">↳ tool result</summary><div class="body"></div>`; d.querySelector(".body").appendChild(pre);
+  container.appendChild(d);
+}
+/* ---- your messages: recognise shell (!) commands, slash commands, their output and pasted text ---- */
+const stripAnsi = s => (s || "").replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+const tagText = (s, tag) => { const m = s.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`)); return m ? m[1] : null; };
+function classifyUserText(t) {
+  const s = t.trim();
+  if (s.startsWith("<bash-input>")) return { kind: "bash", cmd: (tagText(s, "bash-input") || "").trim() };
+  if (/^<bash-std(out|err)>/.test(s)) return { kind: "output", out: stripAnsi(tagText(s, "bash-stdout")), err: stripAnsi(tagText(s, "bash-stderr")) };
+  if (/^<command-(name|message)>/.test(s)) {
+    const name = (tagText(s, "command-name") || tagText(s, "command-message") || "").trim(), args = (tagText(s, "command-args") || "").trim();
+    return { kind: "slash", cmd: name.replace(/^\//, "") + (args ? " " + args : "") };
+  }
+  if (/^<local-command-std(out|err)>/.test(s)) return { kind: "output", out: stripAnsi(tagText(s, "local-command-stdout")), err: stripAnsi(tagText(s, "local-command-stderr")) };
+  if (/^\[Request interrupted by user/.test(s)) return { kind: "notice", text: "You interrupted Claude here", tip: "You pressed Esc / Stop while Claude was working" };
+  if (s.startsWith("<task-notification>")) return { kind: "notice", text: stripAnsi(tagText(s, "summary") || tagText(s, "status") || "update") };
+  const sk = s.match(/^<([a-z0-9-]+)-command>/);
+  if (sk) return { kind: "skill", cmd: sk[1], body: s.replace(/<\/?[a-z0-9-]+-command>/g, "").trim() };
+  return { kind: "text", text: t };
+}
+const CMD_KIND = {
+  bash: { ps: "$", label: "shell", tip: "Shell command you ran with ! in Claude Code.\nIt runs directly in your terminal, not through Claude." },
+  slash: { ps: "/", label: "command", tip: "Slash command you ran in Claude Code" },
+  skill: { ps: "/", label: "skill", tip: "Skill / custom command you ran. Expand to see the prompt it sent to Claude." },
+};
+function termEl(c) {
+  const k = CMD_KIND[c.kind], box = document.createElement("div"); box.className = "term";
+  box.innerHTML = `<div class="line"><span class="ps">${k.ps}</span><span class="c"></span><span class="kind" data-tip="${tipAttr(k.tip)}">${k.label}</span></div>`;
+  box.querySelector(".c").textContent = c.cmd;
+  if (c.body) {
+    const d = document.createElement("details"); d.innerHTML = `<summary data-tip="The full prompt this command sent to Claude">Show expanded prompt</summary><pre></pre>`;
+    d.querySelector("pre").textContent = c.body; box.appendChild(d);
+  }
+  return box;
+}
+function addCmdOutput(p, container) {
+  // attach to the command it belongs to: last terminal block in this message, else in the previous message
+  const lastMsg = $("msgs").lastElementChild;
+  const host = container || (lastMsg?.classList.contains("user") ? lastMsg : null);
+  let box = host ? [...host.querySelectorAll(".term")].pop() : null;
+  if (!box) {  // output without a visible command: show it on its own
+    box = document.createElement("div"); box.className = "term";
+    if (container) container.appendChild(box);
+    else {
+      const wrap = document.createElement("div"); wrap.className = "msg user";
+      wrap.innerHTML = `<div class="role" data-tip="Output of a command you ran">Output</div>`; wrap.appendChild(box); $("msgs").appendChild(wrap);
+    }
+  }
+  for (const [text, cls, tip] of [[p.out, "out", "Command output"], [p.err, "out err", "Error output (stderr)"]]) {
+    if (!text || !text.trim()) continue;
+    const pre = document.createElement("pre"); pre.className = cls; pre.dataset.tip = tip; pre.textContent = text.replace(/\n+$/, ""); box.appendChild(pre);
+  }
+}
+function fillBubble(el, text) {
+  const re = /<pasted_content(?: id="[^"]*")?>\n?([\s\S]*?)\n?<\/pasted_content(?: id="[^"]*")?>/g;
+  let last = 0, m;
+  const addText = s => { s = s.replace(/^\n+|\n+$/g, ""); if (s) el.appendChild(document.createTextNode(s)); };
+  while ((m = re.exec(text))) {
+    addText(text.slice(last, m.index)); last = re.lastIndex;
+    const lines = m[1].split("\n").length, d = document.createElement("details"); d.className = "paste";
+    d.innerHTML = `<summary data-tip="Text you pasted into the message — click to show">📋 Pasted text · ${lines} line${lines === 1 ? "" : "s"}</summary><pre></pre>`;
+    d.querySelector("pre").textContent = m[1]; el.appendChild(d);
+  }
+  addText(text.slice(last));
+}
+
+function renderMessage(role, blocks, ts = new Date().toISOString()) {
+  const onlyResults = blocks.every(b => b.type === "tool_result");
+  if (onlyResults) { const last = $("msgs").lastElementChild || $("msgs"); blocks.forEach(b => attachResult(b, last)); return; }
+  const parts = role === "user" ? blocks.filter(b => b.type === "text").map(b => classifyUserText(b.text)) : [];
+  if (parts.length && parts.length === blocks.length && parts.every(p => p.kind === "output" || p.kind === "notice")) {
+    for (const p of parts) {
+      if (p.kind === "output") addCmdOutput(p);
+      else { const n = document.createElement("div"); n.className = "notice"; n.dataset.tip = p.tip || "A background task started earlier reported back"; n.textContent = p.tip ? "⏸ " + p.text : "⏱ Background task: " + p.text; $("msgs").appendChild(n); }
+    }
+    return;
+  }
+  const isCmd = parts.some(p => CMD_KIND[p.kind]);
+  const wrap = document.createElement("div"); wrap.className = "msg " + role;
+  wrap.innerHTML = `<div class="role">${role === "user" ? (isCmd ? "You · command" : "You") : "Claude"}</div>`;
+  if (ts) wrap.querySelector(".role").dataset.tip = (role === "user" ? "Sent " : "Replied ") + new Date(ts).toLocaleString();
+  let pi = 0;
+  for (const b of blocks) {
+    if (b.type === "text") {
+      if (role === "user") {
+        const p = parts[pi++];
+        if (CMD_KIND[p.kind]) wrap.appendChild(termEl(p));
+        else if (p.kind === "output") addCmdOutput(p, wrap);
+        else if (p.kind === "text") { const el = document.createElement("div"); el.className = "bubble"; fillBubble(el, p.text); wrap.appendChild(el); }
+        continue;
+      }
+      const el = document.createElement("div"); el.className = "md"; el.innerHTML = md(b.text);
+      wrap.appendChild(el);
+    } else if (b.type === "thinking") {
+      const d = document.createElement("details"); d.className = "think";
+      d.innerHTML = `<summary data-tip="Claude's internal reasoning before answering — click to show">Thinking</summary><div></div>`; d.querySelector("div").textContent = b.text; wrap.appendChild(d);
+    } else if (b.type === "tool_use") wrap.appendChild(toolEl(b));
+    else if (b.type === "tool_result") attachResult(b, wrap);
+  }
+  // merge consecutive assistant chunks visually
+  const prev = $("msgs").lastElementChild;
+  if (role === "assistant" && prev?.classList.contains("assistant") && !prev.classList.contains("live")) {
+    wrap.querySelector(".role").remove(); [...wrap.children].forEach(c => prev.appendChild(c));
+  } else $("msgs").appendChild(wrap);
+}
+
+function setBusy(b, label) {
+  state.busy = b; $("sendBtn").disabled = b; $("stopBtn").hidden = !b;
+  $("status").innerHTML = b ? `<span class="spinner"></span> ${esc(label || "Working…")}` : (label || "");
+}
+$("prompt").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
+$("prompt").addEventListener("input", e => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 260) + "px"; });
+$("permMode").value = store.get("permMode") || "auto";
+$("model").value = store.get("model") || "";
+// selects show a tip describing the currently chosen option (from its title)
+function syncSelectTip(sel, label) { sel.dataset.tip = `${label}: ${sel.value || "default"}\n${sel.selectedOptions[0]?.title || ""}`; }
+$("effort").value = store.get("effort") || "";
+for (const [id, label] of [["permMode", "Permission mode"], ["model", "Model"], ["effort", "Effort"]]) {
+  syncSelectTip($(id), label);
+  $(id).addEventListener("change", e => { store.set(id, e.target.value); syncSelectTip(e.target, label); });
+}
+
+/* startup info from the stream-json system/init event: version, model, mode, MCP servers, plugins.
+   plugin_errors entries carry the failing directory in `path` since Claude Code 2.1.283. */
+function showInitInfo(ev) {
+  const mcp = ev.mcp_servers || [];
+  const ok = mcp.filter(m => m.status === "connected"), bad = mcp.filter(m => m.status !== "connected");
+  const plugins = ev.plugins || [], perrs = ev.plugin_errors || [];
+  const line = document.createElement("div"); line.className = "meta-line";
+  line.textContent = [ev.claude_code_version && "Claude Code " + ev.claude_code_version, ev.model, ev.permissionMode,
+    mcp.length && `MCP ${ok.length}/${mcp.length} connected`, plugins.length && `${plugins.length} plugin${plugins.length === 1 ? "" : "s"}`]
+    .filter(Boolean).join(" · ");
+  line.dataset.tip = `Session started\nClaude Code: ${ev.claude_code_version || "?"}\nModel: ${ev.model || "?"}\nPermission mode: ${ev.permissionMode || "?"}` +
+    (mcp.length ? "\n\nMCP servers:\n" + mcp.map(m => `${m.status === "connected" ? "✓" : "✗"} ${m.name} (${m.status})`).join("\n") : "") +
+    (plugins.length ? "\n\nPlugins:\n" + plugins.map(x => `• ${x.name}${x.version ? " " + x.version : ""}`).join("\n") : "") +
+    (ev.tools ? `\n\nTools available: ${ev.tools.length}` : "");
+  $("msgs").appendChild(line);
+  const warns = [
+    ...bad.map(m => `MCP server “${m.name}” ${m.status === "needs-auth" ? "needs authentication" : m.status} — its tools aren't available in this reply`),
+    ...perrs.map(e => `Plugin failed to load${e.path ? ` from ${tilde(e.path)}` : ""}${e.name ? ` (${e.name})` : ""}: ${e.error || e.message || e.reason || JSON.stringify(e)}`),
+  ];
+  for (const w of warns) {
+    const d = document.createElement("div"); d.className = "meta-line"; d.style.color = "var(--warn)"; d.textContent = "⚠ " + w;
+    d.dataset.tip = w.startsWith("MCP") ? "Fix it in your terminal with /mcp (or `claude mcp`), then send again" : "Check the plugin directory shown, or run /plugin in your terminal";
+    $("msgs").appendChild(d);
+  }
+  scrollDown();
+}
+
+async function send() {
+  const prompt = $("prompt").value.trim();
+  if (!prompt || state.busy || !state.cwd) return;
+  if ($("msgs").querySelector(".empty")) $("msgs").innerHTML = "";
+  $("prompt").value = ""; $("prompt").style.height = "";
+  renderMessage("user", [{ type: "text", text: prompt }]); scrollDown(true);
+  setBusy(true, "Starting Claude…");
+
+  let live = null; // live streaming element for the in-progress assistant message
+  const ensureLive = () => {
+    if (!live) { live = document.createElement("div"); live.className = "msg assistant live"; live.innerHTML = '<div class="role">Claude</div><div class="md"></div>'; live._text = ""; $("msgs").appendChild(live); }
+    return live;
+  };
+  const handle = ev => {
+    switch (ev.type) {
+      case "ui_run": state.run = ev.run; break;
+      case "system":
+        if (ev.subtype === "init" && ev.session_id) {
+          if (!state.session) { state.session = ev.session_id; setChatHeader("New chat", state.cwd, ev.session_id); }
+          showInitInfo(ev);
+          setBusy(true, "Thinking…");
+        }
+        break;
+      case "stream_event": {
+        const e = ev.event || {};
+        if (e.type === "content_block_start" && e.content_block?.type === "tool_use") setBusy(true, "Running " + e.content_block.name + "…");
+        if (e.type === "content_block_delta" && e.delta?.type === "text_delta") {
+          const l = ensureLive(); l._text += e.delta.text; l.querySelector(".md").innerHTML = md(l._text); setBusy(true, "Writing…"); scrollDown();
+        }
+        break;
+      }
+      case "assistant":
+        if (live) { live.remove(); live = null; }
+        renderMessage("assistant", normalizeBlocks(ev.message?.content)); scrollDown(); break;
+      case "user": {
+        const blocks = normalizeBlocks(ev.message?.content).filter(b => b.type === "tool_result");
+        if (blocks.length) { renderMessage("user", blocks); setBusy(true, "Thinking…"); }
+        break;
+      }
+      case "result": {
+        const secs = ev.duration_ms ? (ev.duration_ms / 1000).toFixed(1) + "s" : "";
+        const cost = ev.total_cost_usd != null ? " · $" + ev.total_cost_usd.toFixed(4) : "";
+        const line = document.createElement("div"); line.className = "meta-line";
+        line.textContent = (ev.is_error ? "⚠ " + (ev.result || ev.subtype) + " · " : "✓ ") + secs + cost + (ev.num_turns ? ` · ${ev.num_turns} turns` : "");
+        line.dataset.tip = `${ev.is_error ? "The reply ended with an error" : "Reply finished"}\nTime: ${secs || "?"}` +
+          (ev.total_cost_usd != null ? `\nCost of this reply: $${ev.total_cost_usd.toFixed(4)}` : "") +
+          (ev.num_turns ? `\nTurns: ${ev.num_turns} (one per model call, including tool use)` : "");
+        $("msgs").appendChild(line);
+        if (ev.permission_denials?.length) {
+          const d = document.createElement("div"); d.className = "meta-line"; d.style.color = "var(--warn)";
+          d.dataset.tip = "Denied: " + ev.permission_denials.map(x => x.tool_name).join(", ");
+          d.textContent = `${ev.permission_denials.length} tool call(s) were denied by permission mode — switch Mode (e.g. acceptEdits / bypassPermissions) and ask again.`;
+          $("msgs").appendChild(d);
+        }
+        break;
+      }
+      case "ui_error": {
+        const d = document.createElement("div"); d.className = "meta-line errbox"; d.textContent = `claude exited (${ev.code}): ${ev.text}`; d.dataset.tip = "The claude process ended with an error. The message above may be incomplete.";
+        $("msgs").appendChild(d); break;
+      }
+    }
+  };
+
+  try {
+    const r = await fetch("/api/chat", { method: "POST", headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: state.cwd, sessionId: state.session, prompt, permissionMode: $("permMode").value, model: $("model").value, effort: $("effort").value }) });
+    if (!r.ok) throw new Error((await r.json()).error);
+    const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i; while ((i = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); if (line.trim()) try { handle(JSON.parse(line)); } catch (e) { console.warn(e, line); } }
+    }
+  } catch (e) {
+    const d = document.createElement("div"); d.className = "meta-line errbox"; d.textContent = e.message; $("msgs").appendChild(d);
+  }
+  if (live) live.classList.remove("live");
+  state.run = null; setBusy(false); scrollDown();
+  refreshAfterRun();
+}
+function normalizeBlocks(content) {
+  if (typeof content === "string") return [{ type: "text", text: content }];
+  return (content || []).map(b => {
+    if (b.type === "tool_result") {
+      let t = b.content; if (Array.isArray(t)) t = t.map(x => x.text || "").join("\n");
+      return { type: "tool_result", id: b.tool_use_id, text: t, isError: b.is_error };
+    }
+    if (b.type === "thinking") return { type: "thinking", text: b.thinking };
+    return b;
+  }).filter(b => b.type !== "thinking" || b.text);
+}
+async function refreshAfterRun() {
+  await loadProjects();
+  const p = state.projects.find(x => x.cwd === state.cwd);
+  if (p) { if (state.project?.key !== p.key) await selectProject(p.key, true); else { state.sessions = await api("/api/sessions?project=" + encodeURIComponent(p.key)); renderSessions(); } }
+  const s = state.sessions.find(x => x.id === state.session); if (s) $("chatTitle").textContent = s.title;
+}
+async function stopRun() { if (state.run) { await api("/api/stop", { run: state.run }); toast("Stopped"); } }
+function copyResume() {
+  const cmd = `cd '${state.cwd.replace(/'/g, "'\\''")}' && claude --resume ${state.session}`;
+  navigator.clipboard.writeText(cmd).then(() => toast("Copied: " + cmd), () => prompt("Copy:", cmd));
+}
+
+/* ---------- news inbox: Claude Code changes kept in workbench.db ---------- */
+const newsDlg = $("newsDlg");
+const news = { items: [], unread: 0, filter: store.get("newsFilter") || "all", open: new Set() };
+const SRC = {
+  changelog: ["changelog", "New Claude Code version from the official changelog"],
+  version: ["installed", "The claude program on this computer was updated"],
+  cli: ["CLI", "Options of `claude --help` changed — the dashboard runs the CLI"],
+  format: ["session format", "Session files contain something this dashboard doesn't show yet"],
+};
+async function loadNews() {
+  let r; try { r = await api("/api/notices"); } catch { return; }
+  applyNews(r);
+}
+function applyNews(r) {
+  Object.assign(news, { items: r.items, unread: r.unread, lastCheck: r.lastCheck, checking: r.checking, error: r.error });
+  $("bellCount").hidden = !news.unread; $("bellCount").textContent = news.unread > 99 ? "99+" : news.unread;
+  $("bellBtn").dataset.tip = (news.unread ? `${news.unread} unread update${news.unread === 1 ? "" : "s"}\n` : "No unread updates\n") +
+    "Claude Code updates: new versions, CLI changes and session-format changes that may affect this dashboard";
+  // banner in the chat area when something arrived that you haven't dismissed yet
+  const dismissed = +(store.get("newsDismissedMax") || 0);
+  const fresh = news.items.filter(n => !n.read && n.id > dismissed);
+  $("newsBanner").hidden = !fresh.length;
+  if (fresh.length) {
+    const rel = fresh.filter(n => n.relevant).length;
+    $("newsBannerText").innerHTML = `<b>${fresh.length} new Claude Code update${fresh.length === 1 ? "" : "s"}</b>` +
+      (rel ? ` · ${rel} may affect this dashboard` : "") + ` — latest: ${esc(fresh[0].title)}`;
+  }
+  if (newsDlg.open) renderNews();
+}
+function dismissBanner() {
+  store.set("newsDismissedMax", String(Math.max(0, ...news.items.map(n => n.id))));
+  $("newsBanner").hidden = true;
+}
+function openNews(filter) {
+  if (filter) setNewsFilter(filter, true);
+  renderNews(); newsDlg.showModal(); dismissBanner();
+}
+function setNewsFilter(f, silent) {
+  news.filter = f; store.set("newsFilter", f);
+  if (!silent) renderNews();
+}
+$("newsTabs").addEventListener("click", e => { const b = e.target.closest("button[data-f]"); if (b) setNewsFilter(b.dataset.f); });
+
+function newsVisible() {
+  return news.items.filter(n => news.filter === "unread" ? !n.read : news.filter === "relevant" ? n.relevant : true);
+}
+function renderNews() {
+  [...$("newsTabs").children].forEach(b => b.classList.toggle("on", b.dataset.f === news.filter));
+  const counts = { all: news.items.length, unread: news.unread, relevant: news.items.filter(n => n.relevant).length };
+  [...$("newsTabs").children].forEach(b => b.textContent = b.textContent.replace(/ \(\d+\)$/, "") + ` (${counts[b.dataset.f]})`);
+  $("newsMeta").textContent = (news.checking ? "Checking…" : news.lastCheck ? `Last checked ${ago(news.lastCheck)}` : "Not checked yet") +
+    " · checks automatically every 6 hours" + (news.error ? ` · ⚠ ${news.error}` : "");
+  const list = newsVisible();
+  $("newsList").innerHTML = list.map(n => {
+    const [label, tip] = SRC[n.source] || [n.source, ""];
+    const isOpen = news.open.has(n.id);
+    return `<div class="ncard ${n.read ? "" : "unread"}" data-id="${n.id}">
+      <div class="nhead" onclick="toggleNotice(${n.id})" data-tip="${tipAttr((isOpen ? "Click to collapse" : "Click to read") + (n.read ? "" : " (marks it read)"))}">
+        <span class="ndot" data-tip="${n.read ? "Read" : "Unread"}"></span>
+        <span class="ntitle">${esc(n.title)}</span>
+        ${n.relevant ? `<span class="chip rel" data-tip="May need a change in this dashboard">🔧 dashboard</span>` : ""}
+        <span class="chip src ${esc(n.source)}" data-tip="${tipAttr(tip)}">${esc(label)}</span>
+        <span class="ndate" data-tip="${tipAttr("Found " + new Date(n.created * 1000).toLocaleString())}">${ago(n.created)}</span>
+      </div>
+      ${isOpen ? `<div class="nbody"><div class="md">${md(n.body)}</div>
+        ${n.analysis ? `<div class="analysis"><div class="ah" data-tip="Claude's reading of what this change means for the dashboard">✳ Claude on impact for this dashboard</div><div class="md">${md(n.analysis)}</div></div>` : ""}
+        <div class="nactions">
+          <button onclick="setRead([${n.id}], ${n.read ? "false" : "true"})" data-tip="${n.read ? "Keep it in Unread to come back later" : "Mark as read"}">${n.read ? "◉ Mark unread" : "✓ Mark read"}</button>
+          <button id="an-${n.id}" onclick="analyzeNotice(${n.id})" data-tip="Ask Claude (${n.analysis ? "again" : "Haiku, no tools, ~20s"}) what this means for this dashboard: what could break and what could be added. Not saved as a chat session.">✳ ${n.analysis ? "Ask Claude again" : "Ask Claude about impact"}</button>
+          <span class="sp" style="flex:1"></span>
+          <button class="danger" onclick="deleteNotices([${n.id}])" data-tip="Delete this update. It won't come back on the next check.">🗑 Delete</button>
+        </div></div>` : ""}
+    </div>`;
+  }).join("") || `<div class="empty">${news.filter === "unread" ? "You're all caught up 🎉" : news.filter === "relevant" ? "Nothing that affects the dashboard." : "No updates yet — click ↻ Check now."}</div>`;
+}
+async function toggleNotice(id) {
+  const n = news.items.find(x => x.id === id);
+  news.open.has(id) ? news.open.delete(id) : news.open.add(id);
+  if (news.open.has(id) && !n.read) return setRead([id], true);
+  renderNews();
+}
+async function setRead(ids, read) {
+  try { await api("/api/notice", { ids, read }); applyNews(await api("/api/notices")); } catch (e) { toast(e.message); }
+}
+async function markAllRead() {
+  const ids = newsVisible().filter(n => !n.read).map(n => n.id);
+  if (ids.length) setRead(ids, true);
+}
+async function deleteNotices(ids) {
+  if (!confirm("Delete this update? It won't come back.")) return;
+  try { await api("/api/notice", { ids, delete: true }); ids.forEach(i => news.open.delete(i)); applyNews(await api("/api/notices")); } catch (e) { toast(e.message); }
+}
+async function analyzeNotice(id) {
+  const btn = $("an-" + id); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Asking Claude…';
+  try { await api("/api/notice/analyze", { id }); applyNews(await api("/api/notices")); }
+  catch (e) { toast("Claude failed: " + e.message); btn.disabled = false; btn.textContent = "✳ Ask Claude about impact"; }
+}
+async function checkNews() {
+  const btn = $("newsCheckBtn"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Checking…';
+  try {
+    const r = await api("/api/notices/check", {});
+    applyNews(r);
+    toast(r.busy ? "A check is already running" : r.added ? `${r.added} new update${r.added === 1 ? "" : "s"}` : "No new updates");
+  } catch (e) { toast(e.message); }
+  btn.disabled = false; btn.textContent = "↻ Check now";
+}
+loadNews();
+setInterval(loadNews, 5 * 60 * 1000);
+addEventListener("focus", loadNews);
+
+loadProjects();
+</script>
+</body>
+</html>
