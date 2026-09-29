@@ -59,6 +59,12 @@ CREATE TABLE IF NOT EXISTS folders (
 CREATE TABLE IF NOT EXISTS folder_tags (
   cwd TEXT NOT NULL, tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
   PRIMARY KEY (cwd, tag_id));
+-- chats (sessions) share the same groups and tags as folders
+CREATE TABLE IF NOT EXISTS chats (
+  sid TEXT PRIMARY KEY, group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL);
+CREATE TABLE IF NOT EXISTS chat_tags (
+  sid TEXT NOT NULL, tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  PRIMARY KEY (sid, tag_id));
 -- news inbox: Claude Code changes. Deleted notices are kept (deleted=1) so they are never re-added.
 CREATE TABLE IF NOT EXISTS notices (
   id INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE, source TEXT NOT NULL, title TEXT NOT NULL,
@@ -109,7 +115,23 @@ def meta_all():
             folders[r["cwd"]] = {"group": r["group_id"], "tags": []}
         for r in c.execute("SELECT cwd, tag_id FROM folder_tags"):
             folders.setdefault(r["cwd"], {"group": None, "tags": []})["tags"].append(r["tag_id"])
-    return {"groups": groups, "tags": tags, "folders": folders, "colors": COLORS}
+        chats = {}
+        for r in c.execute("SELECT sid, group_id FROM chats"):
+            chats[r["sid"]] = {"group": r["group_id"], "tags": []}
+        for r in c.execute("SELECT sid, tag_id FROM chat_tags"):
+            chats.setdefault(r["sid"], {"group": None, "tags": []})["tags"].append(r["tag_id"])
+    # grouped/tagged chats are listed on their own too, so include what's needed to show them
+    for sid, ch in list(chats.items()):
+        if ch["group"] is None and not ch["tags"]:
+            del chats[sid]
+            continue
+        try:
+            f = find_session_file(sid)
+            m = session_meta(f)
+            ch.update(title=m["title"], cwd=m["cwd"], mtime=m["mtime"], project=f.parent.name)
+        except ValueError:
+            ch.update(title="(deleted chat)", cwd=None, mtime=0, project=None, missing=True)
+    return {"groups": groups, "tags": tags, "folders": folders, "chats": chats, "colors": COLORS}
 
 
 def group_save(b):
@@ -171,9 +193,34 @@ def folder_set(b):
                 tid = row[0] if row else c.execute(
                     "INSERT INTO tags (name, color) VALUES (?, ?)", (name, _color(None, name))).lastrowid
                 c.execute("INSERT OR IGNORE INTO folder_tags VALUES (?, ?)", (cwd, tid))
-        # drop tags nobody uses any more
-        c.execute("DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM folder_tags)")
+        _drop_unused_tags(c)
     return {"ok": True}
+
+
+def chat_set(b):
+    """Set a chat's (session's) group and/or tags, like folder_set."""
+    sid = b["sid"]
+    if not re.fullmatch(r"[0-9a-fA-F-]{36}", sid or ""):
+        raise ValueError("bad session id")
+    with DB_LOCK, db() as c:
+        c.execute("INSERT OR IGNORE INTO chats (sid) VALUES (?)", (sid,))
+        if "group" in b:
+            c.execute("UPDATE chats SET group_id=? WHERE sid=?", (b["group"] or None, sid))
+        if "tags" in b:
+            c.execute("DELETE FROM chat_tags WHERE sid=?", (sid,))
+            for raw in b["tags"]:
+                name = _clean_name(raw, "Tag")
+                row = c.execute("SELECT id FROM tags WHERE name=?", (name,)).fetchone()
+                tid = row[0] if row else c.execute(
+                    "INSERT INTO tags (name, color) VALUES (?, ?)", (name, _color(None, name))).lastrowid
+                c.execute("INSERT OR IGNORE INTO chat_tags VALUES (?, ?)", (sid, tid))
+        _drop_unused_tags(c)
+    return {"ok": True}
+
+
+def _drop_unused_tags(c):
+    """Tags that no folder and no chat uses any more."""
+    c.execute("DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM folder_tags UNION SELECT tag_id FROM chat_tags)")
 
 
 # ---------------------------------------------------------------- sessions
@@ -400,7 +447,8 @@ def repo_info(cwd):
     current = git(cwd, "branch", "--show-current", check=False).stdout.strip()
     for w in wts:
         s = git(w["path"], "status", "--porcelain", check=False) if os.path.isdir(w["path"]) else None
-        w["dirty"] = bool(s and s.stdout.strip())
+        # the worktrees themselves live in .claude/ of the main folder: that alone isn't "changes"
+        w["dirty"] = bool(s and [l for l in s.stdout.splitlines() if l.strip() and l != "?? .claude/"])
     return {"isRepo": True, "root": main_root, "worktrees": wts, "branches": branches,
             "current": current}
 
@@ -426,6 +474,101 @@ def create_worktree(cwd, name, branch, base):
             args.append(base)
     git(info["root"], *args)
     return {"path": str(path), "branch": branch}
+
+
+def list_sessions_under(root):
+    """Sessions of every project whose folder is `root` or inside it (the main checkout, its
+    subfolders and its worktrees, including worktrees that were removed since)."""
+    root = root.rstrip("/")
+    out = []
+    for p in list_projects():
+        if p["cwd"] == root or p["cwd"].startswith(root + "/"):
+            out += list_sessions(p["key"])
+    out.sort(key=lambda m: -m["mtime"])
+    return out
+
+
+def _wt_pair(cwd, source, target):
+    """-> (repo info, source worktree, target worktree) for applying `source` onto branch `target`."""
+    info = repo_info(cwd)
+    if not info.get("isRepo"):
+        raise ValueError("not a git repository")
+    src = next((w for w in info["worktrees"] if w["path"] == source), None)
+    if not src or not src.get("branch"):
+        raise ValueError("source worktree not found or not on a branch")
+    if target == src["branch"]:
+        raise ValueError("source and target are the same branch")
+    dst = next((w for w in info["worktrees"] if w.get("branch") == target), None)
+    if not dst:
+        raise ValueError(f"branch '{target}' isn't checked out in any worktree — check it out in the main folder first")
+    return info, src, dst
+
+
+def worktree_preview(cwd, source, target):
+    """What applying would do, without changing anything."""
+    info, src, dst = _wt_pair(cwd, source, target)
+    root, sb = info["root"], src["branch"]
+    commits = git(root, "log", "--format=%h%x09%s", f"{target}..{sb}", "-n", "50").stdout.splitlines()
+    stat = git(root, "diff", "--stat=100", f"{target}...{sb}").stdout.rstrip()
+    behind = int(git(root, "rev-list", "--count", f"{sb}..{target}").stdout.strip() or 0)
+    # dry-run merge: exit 1 and a list of files when it would conflict (git >= 2.38)
+    mt = git(root, "merge-tree", "--write-tree", "--name-only", target, sb, check=False)
+    conflicts = []
+    # the merge would produce exactly the target's tree: everything is already there (e.g. squashed before)
+    already = mt.returncode == 0 and mt.stdout.split("\n", 1)[0].strip() == git(root, "rev-parse", f"{target}^{{tree}}").stdout.strip()
+    if mt.returncode == 1:
+        for line in mt.stdout.splitlines()[1:]:
+            if not line.strip():
+                break
+            conflicts.append(line.strip())
+    src_dirty = git(src["path"], "status", "--porcelain", check=False).stdout.splitlines()
+    # worktrees live in .claude/ inside the main folder: that isn't a change of its own
+    dst_dirty = [l for l in git(dst["path"], "status", "--porcelain", check=False).stdout.splitlines() if l != "?? .claude/"]
+    return {"source": src["path"], "sourceBranch": sb, "target": target, "targetPath": dst["path"],
+            "commits": commits, "stat": stat, "behind": behind, "conflicts": conflicts, "alreadyApplied": already,
+            "mergeCheck": mt.returncode in (0, 1), "sourceDirty": src_dirty[:50], "targetDirty": dst_dirty[:50]}
+
+
+def worktree_apply(b):
+    """Bring a worktree branch's commits into `target` (checked out in some worktree), by merge or squash.
+    Optionally commits the worktree's uncommitted changes first and removes the worktree afterwards.
+    On a conflict the merge is undone, so nothing is left half-done."""
+    info, src, dst = _wt_pair(b["cwd"], b["source"], b["target"])
+    sb, target, mode = src["branch"], b["target"], b.get("mode", "merge")
+    name = os.path.basename(src["path"])
+    steps = []
+    if b.get("commitDirty") and git(src["path"], "status", "--porcelain", check=False).stdout.strip():
+        msg = (b.get("commitMessage") or "").strip() or f"Work from worktree {name}"
+        git(src["path"], "add", "-A")
+        git(src["path"], "commit", "-m", msg)
+        steps.append(f"committed uncommitted changes in {name}")
+    if not git(info["root"], "rev-list", "-n", "1", f"{target}..{sb}").stdout.strip():
+        raise ValueError(f"nothing to apply: {sb} has no commits that {target} doesn't already have")
+    msg = (b.get("message") or "").strip() or (f"Merge worktree {name} ({sb})" if mode == "merge" else f"{name}: squashed changes from {sb}")
+    if mode == "squash":
+        r = git(dst["path"], "merge", "--squash", sb, check=False)
+        if r.returncode != 0:
+            git(dst["path"], "reset", "--merge", check=False)
+            raise RuntimeError("squash failed, nothing changed: " + (r.stdout + r.stderr).strip()[-600:])
+        if git(dst["path"], "diff", "--cached", "--quiet", check=False).returncode == 0:
+            git(dst["path"], "reset", "--merge", check=False)
+            raise ValueError(f"nothing to apply: {target} already has all changes from {sb}")
+        c = git(dst["path"], "commit", "-m", msg, check=False)
+        if c.returncode != 0:
+            git(dst["path"], "reset", "--merge", check=False)
+            raise RuntimeError("commit failed, nothing changed: " + (c.stdout + c.stderr).strip()[-600:])
+    else:
+        r = git(dst["path"], "merge", "--no-ff", "-m", msg, sb, check=False)
+        if r.returncode != 0:
+            git(dst["path"], "merge", "--abort", check=False)
+            raise RuntimeError("merge failed, nothing changed: " + (r.stdout + r.stderr).strip()[-600:])
+    steps.append(f"{'squashed' if mode == 'squash' else 'merged'} {sb} into {target}")
+    head = git(dst["path"], "log", "-1", "--format=%h %s").stdout.strip()
+    if b.get("removeAfter"):
+        rr = git(info["root"], "worktree", "remove", src["path"], check=False)
+        steps.append(f"removed worktree {name} (branch {sb} kept)" if rr.returncode == 0
+                     else f"could not remove worktree {name}: {rr.stderr.strip()[-200:]}")
+    return {"ok": True, "head": head, "steps": steps}
 
 
 def remove_worktree(cwd, path, force):
@@ -832,7 +975,11 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/projects":
                 return self._send(200, list_projects())
             if u.path == "/api/sessions":
+                if q.get("root"):
+                    return self._send(200, list_sessions_under(q["root"]))
                 return self._send(200, list_sessions(q["project"]))
+            if u.path == "/api/worktree/preview":
+                return self._send(200, worktree_preview(q["cwd"], q["source"], q["target"]))
             if u.path == "/api/session":
                 return self._send(200, read_transcript(q["id"]))
             if u.path == "/api/repo":
@@ -866,10 +1013,14 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/worktree":
                 return self._send(200, create_worktree(b["cwd"], b["name"], b.get("branch"),
                                                        b.get("base")))
+            if u.path == "/api/worktree/apply":
+                return self._send(200, worktree_apply(b))
             if u.path == "/api/worktree/remove":
                 return self._send(200, remove_worktree(b["cwd"], b["path"], b.get("force")))
-            if u.path == "/api/shell":
+            if u.path == "/api/open-terminal":  # "open shell" button: a terminal window in that folder
                 return self._send(200, open_shell(b["cwd"]))
+            if u.path == "/api/chatmeta":
+                return self._send(200, chat_set(b))
             if u.path == "/api/folder":
                 return self._send(200, folder_set(b))
             if u.path == "/api/group":

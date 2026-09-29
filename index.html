@@ -50,6 +50,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scroll{overflow:auto;flex:1;min-height:0}
 .search{margin:10px 12px 4px;width:calc(100% - 24px)}
+.search-row{display:flex;gap:6px;align-items:center;margin:10px 12px 4px}
+.search-row input{flex:1;min-width:0}
+.search-row .seg button{padding:5px 8px}
 .item{padding:9px 14px;border-bottom:1px solid var(--border);cursor:pointer}
 .item:hover{background:var(--panel2)}
 .item.active{background:var(--accent-weak);box-shadow:inset 3px 0 0 var(--accent)}
@@ -78,8 +81,66 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 .brand{font-weight:700;font-size:15px;flex:1}
 .brand span{color:var(--accent)}
 section.wt{border-bottom:1px solid var(--border);padding:10px 12px;background:var(--panel)}
-section.wt summary{cursor:pointer;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+section.wt summary{cursor:pointer;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;
+  display:flex;align-items:center;gap:6px;list-style:none;min-height:24px}
+section.wt summary::-webkit-details-marker{display:none}
+section.wt summary{cursor:default}
+section.wt summary .wt-title{flex:1}
+section.wt summary .wt-add{font-size:12px;text-transform:none;letter-spacing:0;font-weight:600;padding:2px 9px;border-radius:6px;
+  color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent);background:transparent}
+section.wt summary .wt-add:hover{background:var(--accent-weak)}
 .wt-row{display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px dashed var(--border)}
+/* left sidebar tree: directory -> its chats */
+.pcaret{display:inline-block;width:14px;flex:none;color:var(--muted);font-size:10px;transition:transform .15s;cursor:pointer;text-align:center}
+.item.open .pcaret{transform:rotate(90deg)}
+.pchats{background:var(--bg);border-bottom:1px solid var(--border);padding:2px 0 4px}
+.pchat{position:relative;padding:5px 8px 5px 32px;cursor:pointer;font-size:13px}
+.pchat .prow{display:flex;align-items:center;gap:4px}
+.pchat:hover{background:var(--panel2)}
+.pchat.active{background:var(--accent-weak);box-shadow:inset 3px 0 0 var(--accent)}
+.pchat .pt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pchat .pa{flex:none;font-size:11px;color:var(--muted)}
+.pchat .edit{flex:none;opacity:0;padding:0 4px;font-size:12px}
+.pchat:hover .edit,.pchat:focus-within .edit{opacity:1}
+@media (hover:none){.pchat .edit{opacity:1}}
+.pchat .chips{margin-top:2px}
+.pchat .ps{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pchat.loose{padding-left:14px;border-bottom:1px solid var(--border);background:var(--panel)}
+.pchat.dragging{opacity:.4}
+.pmore{padding:3px 32px 5px;font-size:12px}
+.pmore a{color:var(--accent)}
+.item .edit.chat-edit{position:static;opacity:.55;padding:0 4px;margin-left:4px;font-size:12px}
+/* chats grouped by worktree */
+.wtg{border-bottom:1px solid var(--border)}
+.wtg-head{display:flex;align-items:center;gap:6px;padding:8px 10px 8px 12px;background:var(--panel);cursor:pointer;position:sticky;top:0;z-index:1;
+  border-bottom:1px solid var(--border)}
+.wtg-head:hover{background:var(--panel2)}
+.wtg.here>.wtg-head{box-shadow:inset 3px 0 0 var(--accent)}
+.wtg-head .caret{font-size:10px;color:var(--muted);transition:transform .15s;flex:none}
+.wtg.collapsed .caret{transform:rotate(-90deg)}
+.wtg.collapsed .wtg-body{display:none}
+.wtg-head .info{flex:1;min-width:0}
+.wtg-head .nm{font-weight:650;display:flex;align-items:center;min-width:0}
+.wtg-head .nm .t0{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.wtg-head .nm .badge{flex:none}
+.wtg-head .br{font:12px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wtg-head .acts{display:flex;gap:0;flex:none}
+.wtg-head .acts button{padding:2px 6px}
+.wtg-head .n{font-size:12px;color:var(--muted);min-width:18px;text-align:right;flex:none}
+.wtg.removed .nm{color:var(--muted);text-decoration:line-through}
+.wtg-body .item{padding-left:26px}
+.wtg-empty{padding:8px 12px 10px 26px;font-size:12px;color:var(--muted)}
+.wt-apply{color:var(--accent)!important;font-weight:700}
+/* apply dialog */
+#applyDlg{width:min(640px,94vw)}
+.apply-commits{font:12px/1.5 var(--mono);background:var(--code);border:1px solid var(--border);border-radius:8px;padding:6px 10px;max-height:160px;overflow:auto;white-space:pre}
+.apply-note{font-size:12.5px;border-radius:8px;padding:7px 10px;background:var(--panel2);border:1px solid var(--border)}
+.apply-note.warn{color:var(--warn);border-color:var(--warn)}
+.apply-note.bad{color:var(--err);border-color:var(--err)}
+.apply-note.ok{color:var(--ok);border-color:var(--ok)}
+.radio-row{display:flex;gap:14px;flex-wrap:wrap;font-size:13px}
+.radio-row label{display:flex;gap:6px;align-items:flex-start;cursor:pointer}
+.radio-row small{display:block;color:var(--muted)}
 .wt-row:last-child{border-bottom:0}
 .wt-row .info{flex:1;min-width:0}
 .wt-row .info div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -178,7 +239,31 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .chip.on{background:var(--cc);color:var(--panel);border-color:var(--cc)}
 .chip .x{opacity:.7;cursor:pointer}.chip .x:hover{opacity:1}
 .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
-#tagFilter{padding:0 12px 8px;display:flex;flex-wrap:wrap;gap:4px}
+/* project filters: group dropdown, tag dropdown, grouped/list view */
+.pfilter{display:flex;gap:6px;padding:0 12px 8px;align-items:center}
+.pfilter select{flex:1;min-width:0;font-size:13px;padding:4px 6px}
+.pfilter select.on{border-color:var(--accent);color:var(--accent)}
+.dd{position:relative;flex:1;min-width:0}
+.dd>button{width:100%;text-align:left;font-size:13px;padding:4px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dd>button.on{border-color:var(--accent);color:var(--accent)}
+.dd-menu{position:absolute;left:0;top:calc(100% + 4px);z-index:15;width:250px;background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:6px}
+.dd-menu input[type=search]{width:100%;margin-bottom:4px;font-size:13px;padding:4px 8px}
+.dd-list{max-height:260px;overflow:auto}
+.dd-item{display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:6px;cursor:pointer;font-size:13px}
+.dd-item:hover{background:var(--panel2)}
+.dd-item input{margin:0;accent-color:var(--accent)}
+.dd-item .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dd-item .ct{color:var(--muted);font-size:12px}
+.dd-empty{color:var(--muted);font-size:12px;padding:6px}
+.dd-foot{display:flex;gap:6px;align-items:center;border-top:1px solid var(--border);margin-top:6px;padding-top:6px;font-size:12px;color:var(--muted)}
+.seg{display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;flex:none}
+.seg button{border:0;border-radius:0;padding:4px 8px;background:var(--panel);font-size:13px;color:var(--muted)}
+.seg button+button{border-left:1px solid var(--border)}
+.seg button.on{background:var(--accent-weak);color:var(--accent);font-weight:600}
+.dd-foot .seg button{padding:2px 8px;font-size:12px}
+.active-filters{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:0 12px 8px}
+.active-filters .count{font-size:12px;color:var(--muted);margin-left:auto}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--cc);display:inline-block;flex:none}
 .group-head{display:flex;align-items:center;gap:7px;padding:8px 14px 6px;font-size:12px;font-weight:650;letter-spacing:.04em;
   text-transform:uppercase;color:var(--muted);cursor:pointer;position:sticky;top:0;background:var(--panel);z-index:1;border-bottom:1px solid var(--border)}
@@ -306,14 +391,39 @@ Reads ~/.claude/projects directly; groups &amp; tags are stored in workbench.db.
     <button class="ghost" data-tip="Switch between light and dark theme" aria-label="Toggle theme" onclick="toggleTheme()">◐</button>
     <button class="ghost" data-tip="Reload projects, sessions, groups and tags from disk" aria-label="Refresh" onclick="loadProjects()">↻</button>
   </div>
-  <input class="search" id="projSearch" placeholder="Filter projects or #tag…" data-tip="Filter by folder path or tag name.
+  <div class="search-row">
+    <input id="projSearch" placeholder="Filter projects or #tag…" data-tip="Filter by folder path or tag name.
 Start with # to match tags only, e.g. #java" oninput="renderProjects()">
+    <div class="seg" id="viewSeg">
+      <button data-v="grouped" onclick="setProjView('grouped')" data-tip="Grouped view: folders under their group headings" aria-label="Grouped view">▦</button>
+      <button data-v="list" onclick="setProjView('list')" data-tip="List view: all folders in one list, most recently used first" aria-label="List view">☰</button>
+    </div>
+  </div>
   <div style="padding:6px 12px 8px;display:flex;gap:6px">
-    <button style="flex:1" onclick="openBrowse()" data-tip="Pick any folder on your computer and start a new Claude chat there">＋ New chat in folder…</button>
+    <button style="flex:1" onclick="openBrowse()" data-tip="Pick any folder on your computer and start a new Claude chat there">＋ Chat in folder…</button>
     <button data-tip="Create a group to organize folders.
 Drag folders onto it, or set it with 🏷" onclick="newGroup()">＋ Group</button>
   </div>
-  <div id="tagFilter"></div>
+  <div class="pfilter" id="pfilter" hidden>
+    <select id="groupFilter" onchange="setGroupFilter(this.value)"></select>
+    <div class="dd" id="tagDD">
+      <button id="tagDDBtn" onclick="toggleTagDD(event)"></button>
+      <div class="dd-menu" id="tagDDMenu" hidden>
+        <input type="search" id="tagDDSearch" placeholder="Find a tag…" oninput="renderTagMenu()" data-tip="Type to narrow the tag list">
+        <div class="dd-list" id="tagDDList"></div>
+        <div class="dd-foot">
+          <span data-tip="With several tags selected: show folders that have all of them, or any of them">Match</span>
+          <div class="seg" id="tagModeSeg">
+            <button data-m="all" onclick="setTagMode('all')" data-tip="Folders must have every selected tag">all</button>
+            <button data-m="any" onclick="setTagMode('any')" data-tip="Folders with at least one selected tag">any</button>
+          </div>
+          <span style="flex:1"></span>
+          <button class="ghost" style="font-size:12px" onclick="state.tagFilter.clear();saveTagFilter()" data-tip="Unselect all tags">Clear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="active-filters" id="activeFilters" hidden></div>
   <div class="scroll" id="projects"></div>
 </aside>
 
@@ -330,10 +440,11 @@ Drag folders onto it, or set it with 🏷" onclick="newGroup()">＋ Group</butto
   </div>
   <section class="wt" id="wtSection" hidden>
     <details id="wtDetails" open>
-      <summary data-tip="Separate checkouts of this repo, each on its own branch.
-Work on several things in parallel without switching branches.">Git worktrees</summary>
-      <div id="wtList"></div>
-      <button class="primary" style="width:100%;margin-top:8px" onclick="openWtDlg()" data-tip="Create a new git worktree in .claude/worktrees/ — you'll review it before anything runs">＋ New worktree</button>
+      <summary onclick="event.preventDefault()"><span class="wt-title" data-tip="Separate checkouts of this repo, each on its own branch.
+Your chats are listed below under the worktree they ran in.">Git worktrees <span id="wtCount" style="font-weight:400"></span></span>
+        <button class="ghost" style="font-size:12px;text-transform:none;letter-spacing:0;padding:2px 6px" onclick="event.preventDefault();event.stopPropagation();foldAllWt()" id="wtFoldAll" data-tip="Fold or unfold every worktree group">⇕</button>
+        <button class="wt-add" onclick="event.preventDefault();event.stopPropagation();openWtDlg()" data-tip="Create a new git worktree in .claude/worktrees/ — you'll review it before anything runs">＋ New</button></summary>
+      <div id="wtList" hidden></div>
     </details>
   </section>
   <input class="search" id="sessSearch" placeholder="Search sessions…" data-tip="Search session titles, first and last prompts" oninput="renderSessions()">
@@ -453,6 +564,31 @@ Empty = worktree-<name>" placeholder="" list="wtBranchList" autocomplete="off">
       <button type="button" onclick="wtBack()" data-tip="Go back and change the details">← Back</button>
       <button class="primary" id="wtConfirmBtn" onclick="wtConfirm()" data-tip="Run the git command shown above and create the worktree">Confirm &amp; create</button>
     </div>
+  </div>
+</dialog>
+
+<dialog id="applyDlg">
+  <div class="dlg-head"><b style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="applyTitle">Apply worktree</b><button class="ghost" onclick="applyDlg.close()" data-tip="Close (Esc) — nothing is changed" aria-label="Close">✕</button></div>
+  <div class="dlg-body">
+    <label class="field"><span>Apply into branch</span>
+      <select id="applyTarget" onchange="loadApplyPreview()" data-tip="The branch that receives the changes. It must be checked out in one of the worktrees (usually the main folder)."></select>
+    </label>
+    <div id="applyPreview"></div>
+    <div class="field"><span>How</span>
+      <div class="radio-row">
+        <label data-tip="git merge --no-ff: keeps every commit and adds a merge commit"><input type="radio" name="applyMode" value="merge" checked><span>Merge<small>keep all commits</small></span></label>
+        <label data-tip="git merge --squash + commit: all changes become one new commit on the target"><input type="radio" name="applyMode" value="squash"><span>Squash<small>one clean commit</small></span></label>
+      </div>
+    </div>
+    <label class="field"><span>Commit message (optional)</span>
+      <input id="applyMsg" placeholder="" data-tip="Message for the merge (or squash) commit on the target branch">
+    </label>
+    <label class="check" data-tip="After applying, delete the worktree folder. Its branch stays, so nothing is lost."><input type="checkbox" id="applyRemove"> Remove the worktree afterwards (branch is kept)</label>
+    <div class="form-err" id="applyErr"></div>
+  </div>
+  <div class="dlg-foot">
+    <button onclick="applyDlg.close()" data-tip="Close — nothing is changed">Cancel</button>
+    <button class="primary" id="applyBtn" onclick="runApply()" data-tip="Apply the changes as shown above">⤵ Apply</button>
   </div>
 </dialog>
 
@@ -593,6 +729,9 @@ addEventListener("blur", hideTip);
 /* ---------- projects ---------- */
 state.meta = { groups: [], tags: [], folders: {}, colors: [] };
 state.tagFilter = new Set(JSON.parse(store.get("tagFilter") || "[]"));
+state.tagMode = store.get("tagMode") === "any" ? "any" : "all";
+state.groupFilter = store.get("groupFilter") || "";   // "" = all, "0" = ungrouped, else a group id
+state.projView = store.get("projView") === "list" ? "list" : "grouped";
 const collapsed = new Set(JSON.parse(store.get("collapsed") || "[]"));
 
 async function loadProjects() {
@@ -610,80 +749,246 @@ async function loadProjects() {
 }
 async function reloadMeta() {
   try { state.meta = await api("/api/meta"); } catch (e) { toast(e.message); return; }
-  renderProjects(); renderProjChips();
+  renderProjects(); renderProjChips(); renderSessions();
   if (manageDlg.open) renderManage();
 }
 const folderOf = cwd => state.meta.folders[cwd] || { group: null, tags: [] };
 const tagById = id => state.meta.tags.find(t => t.id === id);
-const tagUses = id => Object.values(state.meta.folders).filter(f => f.tags.includes(id)).length;
+const chatOf = sid => state.meta.chats?.[sid] || { group: null, tags: [] };
+const tagUses = id => Object.values(state.meta.folders).filter(f => f.tags.includes(id)).length +
+  Object.values(state.meta.chats || {}).filter(c => c.tags.includes(id)).length;
 const SHELL_TIP = "Open a terminal window in this folder";
 const WT_BADGE_TIP = "This folder is a git worktree created by Claude Code (inside .claude/worktrees/)";
 const MISSING_TIP = "This folder no longer exists on disk (deleted, moved or renamed).\nOld chats can still be read, but new chats can't run here.";
 const chip = (t, extra = "", tip = `Tag: ${t.name}`) => `<span class="chip" style="--cc:var(--c-${t.color})" data-tip="${tipAttr(tip)}" ${extra}>${esc(t.name)}</span>`;
 
-function renderTagFilter() {
-  $("tagFilter").innerHTML = state.meta.tags.map(t =>
-    `<span class="chip ${state.tagFilter.has(t.id) ? "on" : ""}" style="--cc:var(--c-${t.color})" onclick="toggleTagFilter(${t.id})" data-tip="${tipAttr(state.tagFilter.has(t.id) ? `Filtering by #${t.name} — click to remove this filter` : `Show only folders tagged #${t.name} (${tagUses(t.id)} folder${tagUses(t.id) === 1 ? "" : "s"})\nSelect several to require all of them`)}">#${esc(t.name)}</span>`).join("")
-    + (state.tagFilter.size ? `<button class="ghost" style="font-size:11px" data-tip="Remove all tag filters" onclick="state.tagFilter.clear();saveTagFilter()">clear</button>` : "");
+/* filter bar above the project list */
+function renderFilterBar() {
+  const groups = state.meta.groups, tags = state.meta.tags;
+  if (state.groupFilter && state.groupFilter !== "0" && !groups.some(g => g.id === +state.groupFilter)) state.groupFilter = "";
+  const inGroup = gid => state.projects.filter(p => (folderOf(p.cwd).group || 0) === gid).length;
+  $("pfilter").hidden = !groups.length && !tags.length;
+  // group dropdown (and the view switch) only make sense once you have groups
+  $("groupFilter").hidden = $("viewSeg").hidden = !groups.length;
+  $("groupFilter").innerHTML = `<option value="">▣ All groups</option>` +
+    groups.map(g => `<option value="${g.id}">${esc(g.name)} (${inGroup(g.id)})</option>`).join("") +
+    `<option value="0">Ungrouped (${inGroup(0)})</option>`;
+  $("groupFilter").value = state.groupFilter;
+  $("groupFilter").classList.toggle("on", state.groupFilter !== "");
+  $("groupFilter").dataset.tip = state.groupFilter === "" ? "Show only one group" : "Showing one group — choose “All groups” to show everything";
+  // tag dropdown
+  $("tagDD").hidden = !tags.length;
+  const sel = [...state.tagFilter].map(tagById).filter(Boolean);
+  $("tagDDBtn").textContent = sel.length === 0 ? "🏷 Tags ▾" : sel.length === 1 ? `🏷 #${sel[0].name} ▾` : `🏷 ${sel.length} tags (${state.tagMode}) ▾`;
+  $("tagDDBtn").classList.toggle("on", sel.length > 0);
+  $("tagDDBtn").dataset.tip = sel.length ? `Filtering by ${sel.map(t => "#" + t.name).join(state.tagMode === "all" ? " and " : " or ")}\nClick to change` : "Show only folders with certain tags";
+  [...$("viewSeg").children].forEach(b => b.classList.toggle("on", b.dataset.v === state.projView));
+  if (!$("tagDDMenu").hidden) renderTagMenu();
+  renderActiveFilters();
+}
+function renderTagMenu() {
+  const q = $("tagDDSearch").value.trim().toLowerCase();
+  $("tagDDSearch").hidden = state.meta.tags.length <= 6;
+  const list = state.meta.tags.filter(t => !q || t.name.toLowerCase().includes(q));
+  $("tagDDList").innerHTML = list.map(t => {
+    const n = tagUses(t.id);
+    return `<label class="dd-item" data-tip="${tipAttr(`#${t.name} — on ${n} folder${n === 1 ? "" : "s"}`)}">
+      <input type="checkbox" ${state.tagFilter.has(t.id) ? "checked" : ""} onchange="toggleTagFilter(${t.id})">
+      <span class="dot" style="--cc:var(--c-${t.color})"></span><span class="nm">${esc(t.name)}</span><span class="ct">${n}</span></label>`;
+  }).join("") || `<div class="dd-empty">No tags match “${esc(q)}”</div>`;
+  [...$("tagModeSeg").children].forEach(b => b.classList.toggle("on", b.dataset.m === state.tagMode));
+}
+function toggleTagDD(e) {
+  e.stopPropagation();
+  const m = $("tagDDMenu"); m.hidden = !m.hidden;
+  if (!m.hidden) { $("tagDDSearch").value = ""; renderTagMenu(); if (!$("tagDDSearch").hidden) $("tagDDSearch").focus(); }
+}
+document.addEventListener("click", e => { if (!e.target.closest?.("#tagDD")) $("tagDDMenu").hidden = true; });
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("tagDDMenu").hidden = true; });
+function setTagMode(m) { state.tagMode = m; store.set("tagMode", m); renderProjects(); }
+function setGroupFilter(v) { state.groupFilter = v; store.set("groupFilter", v); renderProjects(); }
+function setProjView(v) { state.projView = v; store.set("projView", v); renderProjects(); }
+function clearFilters() { state.tagFilter.clear(); store.set("tagFilter", "[]"); setGroupFilter(""); $("projSearch").value = ""; renderProjects(); }
+function renderActiveFilters() {
+  const parts = [];
+  if (state.groupFilter !== "") {
+    const g = state.groupFilter === "0" ? { name: "Ungrouped", color: "slate" } : state.meta.groups.find(x => x.id === +state.groupFilter);
+    if (g) parts.push(`<span class="chip" style="--cc:var(--c-${g.color})" data-tip="Showing only this group">▣ ${esc(g.name)}<span class="x" onclick="setGroupFilter('')" data-tip="Show all groups">×</span></span>`);
+  }
+  const sel = [...state.tagFilter].map(tagById).filter(Boolean);
+  sel.forEach((t, i) => parts.push((i ? `<span style="font-size:11px;color:var(--muted)">${state.tagMode === "all" ? "and" : "or"}</span>` : "") +
+    `<span class="chip" style="--cc:var(--c-${t.color})" data-tip="Showing folders tagged #${esc(t.name)}">#${esc(t.name)}<span class="x" onclick="toggleTagFilter(${t.id})" data-tip="Remove this tag filter">×</span></span>`));
+  const shown = state.projects.filter(projectMatches).length;
+  const filtering = parts.length || $("projSearch").value.trim();
+  $("activeFilters").hidden = !filtering;
+  $("activeFilters").innerHTML = parts.join("") +
+    `<span class="count" data-tip="Folders shown / all folders">${shown} of ${state.projects.length}</span>` +
+    `<button class="ghost" style="font-size:12px" onclick="clearFilters()" data-tip="Remove every filter, including the search text">Clear</button>`;
 }
 function toggleTagFilter(id) { state.tagFilter.has(id) ? state.tagFilter.delete(id) : state.tagFilter.add(id); saveTagFilter(); }
 function saveTagFilter() { store.set("tagFilter", JSON.stringify([...state.tagFilter])); renderProjects(); }
 
-function projectMatches(p) {
-  const f = folderOf(p.cwd);
-  for (const id of state.tagFilter) if (!f.tags.includes(id)) return false;
-  const q = $("projSearch").value.trim().toLowerCase();
-  if (!q) return true;
-  const tagNames = f.tags.map(id => tagById(id)?.name.toLowerCase() || "");
-  if (q.startsWith("#")) return tagNames.some(n => n.startsWith(q.slice(1)));
-  return p.cwd.toLowerCase().includes(q) || tagNames.some(n => n.includes(q));
+/* group + tag filters for anything that has {group, tags} (a folder or a chat) */
+function metaMatches(m) {
+  if (state.groupFilter !== "" && (m.group || 0) !== +state.groupFilter) return false;
+  if (state.tagFilter.size) {
+    const has = id => m.tags.includes(id);
+    if (state.tagMode === "any" ? ![...state.tagFilter].some(has) : ![...state.tagFilter].every(has)) return false;
+  }
+  return true;
 }
-function projectItem(p) {
+const searchQ = () => $("projSearch").value.trim().toLowerCase();
+function textMatches(text, m) {
+  const q = searchQ(); if (!q) return true;
+  const tagNames = m.tags.map(id => tagById(id)?.name.toLowerCase() || "");
+  if (q.startsWith("#")) return tagNames.some(n => n.startsWith(q.slice(1)));
+  return text.toLowerCase().includes(q) || tagNames.some(n => n.includes(q));
+}
+const filtersOn = () => !!(state.tagFilter.size || state.groupFilter !== "" || searchQ());
+const dirSelfMatches = p => metaMatches(folderOf(p.cwd)) && textMatches(p.cwd, folderOf(p.cwd));
+const chatMatches = c => metaMatches(chatOf(c.id)) && textMatches(c.title || "", chatOf(c.id));
+/* chats we know of in a directory: the loaded list, plus grouped/tagged ones from the database */
+function knownChats(p) {
+  const list = state.projSessions.get(p.key)?.list || [];
+  const seen = new Set(list.map(c => c.id));
+  const extra = Object.entries(state.meta.chats || {}).filter(([sid, c]) => c.project === p.key && !seen.has(sid))
+    .map(([sid, c]) => ({ id: sid, title: c.title, mtime: c.mtime, cwd: c.cwd }));
+  return [...list, ...extra];
+}
+/* a directory is shown if it matches, or if some of its chats do (then only those are listed) */
+function dirEntry(p) {
+  if (!filtersOn() || dirSelfMatches(p)) return { p, only: null };
+  const chats = knownChats(p).filter(chatMatches);
+  return chats.length ? { p, only: chats } : null;
+}
+function projectMatches(p) { return !!dirEntry(p); }
+
+state.projOpen = new Set(JSON.parse(store.get("projOpen") || "[]"));
+state.projSessions = new Map();  // project key -> {mtime, list}
+state.projShowAll = new Set();
+const loadingProj = new Set();
+async function ensureProjSessions(p) {
+  const c = state.projSessions.get(p.key);
+  if ((c && c.mtime === p.mtime) || loadingProj.has(p.key)) return;
+  loadingProj.add(p.key);
+  try { state.projSessions.set(p.key, { mtime: p.mtime, list: await api("/api/sessions?project=" + encodeURIComponent(p.key)) }); }
+  catch { state.projSessions.set(p.key, { mtime: p.mtime, list: [] }); }
+  loadingProj.delete(p.key);
+  renderProjects();
+}
+function toggleProjOpen(key, force) {
+  const open = force ?? !state.projOpen.has(key);
+  open ? state.projOpen.add(key) : state.projOpen.delete(key);
+  store.set("projOpen", JSON.stringify([...state.projOpen])); renderProjects();
+}
+/* click a directory: select it and unfold its chats; click it again to fold */
+function clickProject(key) {
+  if (state.project?.key === key) return toggleProjOpen(key);
+  toggleProjOpen(key, true); selectProject(key);
+}
+async function openChatFromTree(key, sid) {
+  if (key && state.project?.key !== key && state.projects.some(p => p.key === key)) await selectProject(key, true);
+  openSession(sid);
+}
+
+function chatChips(sid, withGroup) {
+  const m = chatOf(sid), g = withGroup && state.meta.groups.find(x => x.id === m.group);
+  const tags = m.tags.map(tagById).filter(Boolean);
+  if (!g && !tags.length) return "";
+  return `<div class="chips">${g ? `<span class="chip" style="--cc:var(--c-${g.color})" data-tip="${tipAttr("Chat's group: " + g.name)}">▣ ${esc(g.name)}</span>` : ""}${tags.map(t => chip(t)).join("")}</div>`;
+}
+function chatBadge(sid) {
+  const c = state.chats.get(sid);
+  return c?.busy ? `<span class="badge run" data-tip="Claude is working on this chat"><span class="spinner"></span>working</span>`
+    : state.unseen.has(sid) ? `<span class="badge new" data-tip="Finished while you were in another chat">● new</span>` : "";
+}
+function treeChat(key, c, loose) {
+  const J = v => JSON.stringify(v).replace(/'/g, "&#39;");
+  const folder = loose ? (c.cwd ? tilde(c.cwd) : "") : "";
+  const tip = `${c.title}\n${c.mtime ? "Last active " + new Date(c.mtime * 1000).toLocaleString() : ""}` + (c.cwd ? `\nFolder: ${c.cwd}` : "") +
+    `\nClick to open${loose ? "" : " · drag onto a group to add it there"}`;
+  return `<div class="pchat ${loose ? "loose" : ""} ${state.session === c.id ? "active" : ""}" draggable="true" data-sid="${esc(c.id)}"
+      onclick='openChatFromTree(${J(key)}, ${J(c.id)})' ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')" data-tip="${tipAttr(tip)}">
+    <div class="prow"><span class="pt">${chatBadge(c.id)}${loose ? "💬 " : ""}${esc(c.title || "(untitled)")}</span>
+      <span class="pa">${c.mtime ? ago(c.mtime) : ""}</span>
+      <button class="ghost edit" data-tip="Set group and tags for this chat" aria-label="Edit chat group and tags" onclick='event.stopPropagation();openChatDlg(${J(c.id)}, ${J(c.title || "")})'>🏷</button></div>
+    ${folder ? `<div class="ps">${esc(folder)}</div>` : ""}
+    ${chatChips(c.id, loose ? false : chatOf(c.id).group !== folderOf(c.cwd || "").group)}
+  </div>`;
+}
+const TREE_LIMIT = 8;
+function projectItem(p, only) {
   const name = p.cwd.split("/").filter(Boolean).pop() || "/";
   const tags = folderOf(p.cwd).tags.map(tagById).filter(Boolean);
-  const tip = `${p.cwd}\n${p.sessions} session${p.sessions === 1 ? "" : "s"} · last used ${new Date(p.mtime * 1000).toLocaleString()}\nClick to open · drag onto a group to move it`;
-  return `<div class="item ${state.project?.key === p.key ? "active" : ""}" draggable="true" data-cwd="${esc(p.cwd)}" data-tip="${tipAttr(tip)}"
-      onclick="selectProject('${esc(p.key)}')" ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')">
+  const listGroup = state.projView === "list" && state.meta.groups.find(g => g.id === folderOf(p.cwd).group);
+  const open = !!only || state.projOpen.has(p.key);
+  const tip = `${p.cwd}\n${p.sessions} chat${p.sessions === 1 ? "" : "s"} · last used ${new Date(p.mtime * 1000).toLocaleString()}\n` +
+    (open ? "Click to fold its chats" : "Click to show its chats") + " · drag onto a group to move it";
+  let chatsHtml = "";
+  if (open) {
+    let list = only || knownChats(p);
+    if (!only) ensureProjSessions(p);
+    const cached = state.projSessions.get(p.key);
+    const all = state.projShowAll.has(p.key) || !!only;
+    chatsHtml = `<div class="pchats">${!cached && !only ? '<div class="pmore"><span class="spinner"></span></div>' :
+      list.slice(0, all ? undefined : TREE_LIMIT).map(c => treeChat(p.key, c, false)).join("") +
+      (!all && list.length > TREE_LIMIT ? `<div class="pmore"><a href="#" onclick="event.preventDefault();state.projShowAll.add('${esc(p.key)}');renderProjects()">Show all ${list.length} chats</a></div>` : "") +
+      (!list.length ? '<div class="pmore" style="color:var(--muted)">No chats</div>' : "") +
+      (only ? `<div class="pmore" style="color:var(--muted)">${only.length} matching chat${only.length === 1 ? "" : "s"} shown</div>` : "")}</div>`;
+  }
+  return `<div class="item ${open ? "open" : ""} ${state.project?.key === p.key ? "active" : ""}" draggable="true" data-cwd="${esc(p.cwd)}" data-tip="${tipAttr(tip)}"
+      onclick="clickProject('${esc(p.key)}')" ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')">
     <button class="ghost edit" data-tip="Set group and tags for this folder" aria-label="Edit group and tags" onclick='event.stopPropagation();openFolderDlg(${JSON.stringify(p.cwd)})'>🏷</button>
-<<<<<<< Updated upstream
     ${p.exists ? `<button class="ghost edit shell" data-tip="${SHELL_TIP}" aria-label="Open shell here" onclick='event.stopPropagation();openShell(${JSON.stringify(p.cwd)})'>&gt;_</button>` : ""}
-    <div class="t">${esc(name)}${p.isWorktree ? `<span class="badge wt" data-tip="${WT_BADGE_TIP}">worktree</span>` : ""}${p.exists ? "" : `<span class="badge gone" data-tip="${MISSING_TIP}">missing</span>`}</div>
-=======
-    <div class="t">${[...state.chats.values()].some(c => c.busy && c.cwd === p.cwd) ? `<span class="badge run" data-tip="A chat in this folder is running"><span class="spinner"></span>working</span>` : ""}${esc(name)}${p.isWorktree ? `<span class="badge wt" data-tip="${WT_BADGE_TIP}">worktree</span>` : ""}${p.exists ? "" : `<span class="badge gone" data-tip="${MISSING_TIP}">missing</span>`}</div>
->>>>>>> Stashed changes
+    <div class="t"><span class="pcaret" data-tip="${open ? "Hide" : "Show"} chats" onclick="event.stopPropagation();toggleProjOpen('${esc(p.key)}')">▶</span>${[...state.chats.values()].some(c => c.busy && c.cwd === p.cwd) ? `<span class="badge run" data-tip="A chat in this folder is running"><span class="spinner"></span>working</span>` : ""}${esc(name)}${p.isWorktree ? `<span class="badge wt" data-tip="${WT_BADGE_TIP}">worktree</span>` : ""}${p.exists ? "" : `<span class="badge gone" data-tip="${MISSING_TIP}">missing</span>`}</div>
     <div class="s">${esc(tilde(p.cwd))}</div>
-    <div class="s">${p.sessions} session${p.sessions === 1 ? "" : "s"} · ${ago(p.mtime)}</div>
-    ${tags.length ? `<div class="chips">${tags.map(t => chip(t)).join("")}</div>` : ""}</div>`;
+    <div class="s">${p.sessions} chat${p.sessions === 1 ? "" : "s"} · ${ago(p.mtime)}</div>
+    ${tags.length || listGroup ? `<div class="chips">${listGroup ? `<span class="chip" style="--cc:var(--c-${listGroup.color})" data-tip="${tipAttr("Group: " + listGroup.name)}">▣ ${esc(listGroup.name)}</span>` : ""}${tags.map(t => chip(t)).join("")}</div>` : ""}</div>${chatsHtml}`;
 }
 function renderProjects() {
-  renderTagFilter();
-  const visible = state.projects.filter(projectMatches);
+  renderFilterBar();
+  const entries = state.projects.map(dirEntry).filter(Boolean);
   const sections = [...state.meta.groups.map(g => ({ id: g.id, name: g.name, color: g.color })), { id: 0, name: "Ungrouped", color: "slate" }];
-  const filtering = state.tagFilter.size || $("projSearch").value.trim();
-  if (!state.meta.groups.length) {  // no groups yet: plain list
-    $("projects").innerHTML = visible.map(projectItem).join("") || '<div class="empty">No projects match.</div>';
+  const filtering = filtersOn();
+  if (!state.meta.groups.length || state.projView === "list") {  // flat list, most recent first
+    $("projects").innerHTML = entries.map(e => projectItem(e.p, e.only)).join("") || '<div class="empty">Nothing matches.</div>';
     return;
   }
   const html = sections.map(g => {
-    const items = visible.filter(p => (folderOf(p.cwd).group || 0) === g.id);
-    if (!items.length && (filtering || g.id === 0)) return "";
+    const items = entries.filter(e => (folderOf(e.p.cwd).group || 0) === g.id);
+    // chats put in this group whose folder is in another group show here as shortcuts
+    const loose = g.id ? Object.entries(state.meta.chats || {})
+      .filter(([sid, c]) => c.group === g.id && !c.missing && (folderOf(c.cwd || "").group || 0) !== g.id)
+      .map(([sid, c]) => ({ id: sid, ...c })).filter(c => !filtering || chatMatches(c)) : [];
+    const n = items.length + loose.length;
+    if (!n && (filtering || g.id === 0)) return "";
     const isCollapsed = collapsed.has(g.id) && !filtering;
+    const looseHtml = loose.map(c => treeChat(c.project, c, true)).join("");
     return `<div class="group ${isCollapsed ? "collapsed" : ""}" data-group="${g.id}"
         ondragover="dragOver(event)" ondragleave="this.classList.remove('drop')" ondrop="dropOn(event, ${g.id})">
-      <div class="group-head" onclick="toggleGroup(${g.id})" data-tip="${tipAttr(`${g.id ? "Group" : "Folders without a group"}: ${g.name}\nClick to ${isCollapsed ? "expand" : "collapse"} · drop a folder here to move it`)}"><span class="caret">▼</span><span class="dot" style="--cc:var(--c-${g.color})" data-tip="Group color: ${g.color} (change it in ⚙)"></span>${esc(g.name)}<span class="n" data-tip="${items.length} folder${items.length === 1 ? "" : "s"}${filtering ? " match the filter" : ""}">${items.length}</span></div>
-      <div class="group-body">${items.map(projectItem).join("") || '<div class="s" style="padding:8px 14px;color:var(--muted);font-size:12px" data-tip="Drag a folder from another group, or use 🏷 on a folder">Drag folders here</div>'}</div></div>`;
+      <div class="group-head" onclick="toggleGroup(${g.id})" data-tip="${tipAttr(`${g.id ? "Group" : "Folders without a group"}: ${g.name}\nClick to ${isCollapsed ? "expand" : "collapse"} · drop a folder or chat here to add it`)}"><span class="caret">▼</span><span class="dot" style="--cc:var(--c-${g.color})" data-tip="Group color: ${g.color} (change it in ⚙)"></span>${esc(g.name)}<span class="n" data-tip="${items.length} folder${items.length === 1 ? "" : "s"}${loose.length ? ` + ${loose.length} chat${loose.length === 1 ? "" : "s"}` : ""}${filtering ? " match the filter" : ""}">${n}</span></div>
+      <div class="group-body">${looseHtml}${items.map(e => projectItem(e.p, e.only)).join("") || (looseHtml ? "" : '<div class="s" style="padding:8px 14px;color:var(--muted);font-size:12px" data-tip="Drag a folder or chat here, or use 🏷">Drag folders or chats here</div>')}</div></div>`;
   }).join("");
-  $("projects").innerHTML = html || '<div class="empty">No projects match.</div>';
+  $("projects").innerHTML = html || '<div class="empty">Nothing matches.</div>';
 }
 function toggleGroup(id) { collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id); store.set("collapsed", JSON.stringify([...collapsed])); renderProjects(); }
 
 /* drag a folder onto a group header/body to move it */
-function dragStart(e) { e.dataTransfer.setData("text/plain", e.currentTarget.dataset.cwd); e.dataTransfer.effectAllowed = "move"; e.currentTarget.classList.add("dragging"); }
+function dragStart(e) {
+  e.stopPropagation();
+  const el = e.currentTarget;
+  e.dataTransfer.setData("text/plain", el.dataset.sid ? "chat:" + el.dataset.sid : el.dataset.cwd);
+  e.dataTransfer.effectAllowed = "move"; el.classList.add("dragging");
+}
 function dragOver(e) { e.preventDefault(); e.currentTarget.classList.add("drop"); }
 async function dropOn(e, gid) {
   e.preventDefault(); e.currentTarget.classList.remove("drop");
-  const cwd = e.dataTransfer.getData("text/plain"); if (!cwd) return;
-  try { await api("/api/folder", { cwd, group: gid || null }); await reloadMeta(); } catch (err) { toast(err.message); }
+  const what = e.dataTransfer.getData("text/plain"); if (!what) return;
+  try {
+    if (what.startsWith("chat:")) await api("/api/chatmeta", { sid: what.slice(5), group: gid || null });
+    else await api("/api/folder", { cwd: what, group: gid || null });
+    await reloadMeta();
+  } catch (err) { toast(err.message); }
 }
 
 async function newGroup() {
@@ -693,10 +998,11 @@ async function newGroup() {
 
 /* folder dialog: set group + tags */
 const folderDlg = $("folderDlg"); let folderEdit = null;
-function openFolderDlg(cwd) {
-  const f = folderOf(cwd);
-  folderEdit = { cwd, tags: f.tags.map(id => tagById(id)?.name).filter(Boolean) };
-  $("folderDlgTitle").textContent = tilde(cwd);
+function openFolderDlg(cwd) { openMetaDlg("folder", cwd, "📁 " + tilde(cwd), folderOf(cwd)); }
+function openChatDlg(sid, title) { openMetaDlg("chat", sid, "💬 " + (title || sid), chatOf(sid)); }
+function openMetaDlg(kind, id, label, f) {
+  folderEdit = { kind, id, cwd: id, tags: f.tags.map(id => tagById(id)?.name).filter(Boolean) };
+  $("folderDlgTitle").textContent = label;
   fillGroupSelect(f.group);
   $("folderTagInput").value = ""; renderFolderTags(); folderDlg.showModal(); $("folderTagInput").focus();
 }
@@ -718,7 +1024,7 @@ $("folderGroup").addEventListener("change", async e => {
 function renderFolderTags() {
   const colorOf = n => state.meta.tags.find(t => t.name.toLowerCase() === n.toLowerCase())?.color || "slate";
   $("folderTagChips").innerHTML = folderEdit.tags.map((n, i) =>
-    `<span class="chip" style="--cc:var(--c-${colorOf(n)})" data-tip="${tipAttr(`Tag: ${n}`)}">${esc(n)}<span class="x" data-tip="Remove this tag from the folder" onclick="event.stopPropagation();folderEdit.tags.splice(${i},1);renderFolderTags()">×</span></span>`).join("");
+    `<span class="chip" style="--cc:var(--c-${colorOf(n)})" data-tip="${tipAttr(`Tag: ${n}`)}">${esc(n)}<span class="x" data-tip="Remove this tag" onclick="event.stopPropagation();folderEdit.tags.splice(${i},1);renderFolderTags()">×</span></span>`).join("");
   const have = new Set(folderEdit.tags.map(n => n.toLowerCase()));
   const sugg = state.meta.tags.filter(t => !have.has(t.name.toLowerCase()));
   $("folderTagSuggest").innerHTML = sugg.length ? `<span style="font-size:11px;color:var(--muted)" data-tip="Tags you already use on other folders">Existing:</span>` +
@@ -737,7 +1043,9 @@ async function saveFolder() {
   const pending = $("folderTagInput").value; if (pending.trim()) addFolderTag(pending);
   const g = $("folderGroup").value;
   try {
-    await api("/api/folder", { cwd: folderEdit.cwd, group: g && g !== "new" ? +g : null, tags: folderEdit.tags });
+    const group = g && g !== "new" ? +g : null;
+    if (folderEdit.kind === "chat") await api("/api/chatmeta", { sid: folderEdit.id, group, tags: folderEdit.tags });
+    else await api("/api/folder", { cwd: folderEdit.cwd, group, tags: folderEdit.tags });
     folderDlg.close(); await reloadMeta();
   } catch (e) { toast(e.message); }
 }
@@ -762,7 +1070,7 @@ function renderManage() {
       <span class="dot" style="--cc:var(--c-${t.color})" data-tip="Tag color"></span>
       <input value="${esc(t.name)}" maxlength="40" data-tip="Tag name — rename it on every folder at once" onchange="saveTag(${t.id}, this.value, null)">
       ${colorSelect(t.color, `saveTag(${t.id}, null, this.value)`)}
-      <span style="font-size:12px;color:var(--muted);width:52px;text-align:right" data-tip="Number of folders with this tag">${uses} folder${uses === 1 ? "" : "s"}</span>
+      <span style="font-size:12px;color:var(--muted);width:52px;text-align:right" data-tip="Number of folders and chats with this tag">${uses} use${uses === 1 ? "" : "s"}</span>
       <button class="ghost danger" data-tip="Delete this tag from all folders" aria-label="Delete tag" onclick="delTag(${t.id})">✕</button></div>`;
   }).join("") || '<div style="color:var(--muted);font-size:13px">No tags yet — add them with 🏷 on a folder.</div>';
 }
@@ -806,14 +1114,36 @@ async function selectProject(key, keepView) {
   $("projShellBtn").hidden = !state.project.exists;
   $("sessions").innerHTML = '<div class="empty"><span class="spinner"></span></div>';
   if (!keepView) setView("mid");
-  loadRepo(state.project.cwd);
-  try { state.sessions = await api("/api/sessions?project=" + encodeURIComponent(key)); } catch (e) { toast(e.message); state.sessions = []; }
+  await loadRepo(state.project.cwd);
+  if (state.project?.key !== key) return;  // you clicked another project meanwhile
+  try { state.sessions = await fetchSessions(); } catch (e) { toast(e.message); state.sessions = []; }
+  renderSessions();
+}
+/* a git repo shows the chats of all its worktrees; other folders just their own */
+function fetchSessions() {
+  return state.repo ? api("/api/sessions?root=" + encodeURIComponent(state.repo.root))
+                    : api("/api/sessions?project=" + encodeURIComponent(state.project.key));
+}
+async function refreshRepoAndSessions() {
+  if (!state.project) return;
+  await loadRepo(state.project.cwd);
+  try { state.sessions = await fetchSessions(); } catch { }
   renderSessions();
 }
 function renderSessions() {
   const q = $("sessSearch").value.toLowerCase();
   const list = state.sessions.filter(s => !q || (s.title + " " + (s.firstPrompt || "") + " " + (s.lastPrompt || "")).toLowerCase().includes(q));
-  $("sessions").innerHTML = list.map(s => {
+  if (state.repo) {
+    const searching = !!q;
+    const groups = groupByWorktree(list).filter(g => !searching || g.items.length);
+    $("sessions").innerHTML = groups.map(g => wtGroupHtml(g, searching)).join("") || '<div class="empty">No sessions match.</div>';
+    return;
+  }
+  $("sessions").innerHTML = list.map(sessionItem).join("")
+    || '<div class="empty">No sessions yet.</div>';
+}
+function sessionItem(s) {
+  {
     const tip = `${s.title}\nSession ${s.id}\nLast active ${new Date(s.mtime * 1000).toLocaleString()} · ${s.messages} messages` +
       (s.gitBranch && s.gitBranch !== "HEAD" ? `\nGit branch: ${s.gitBranch}` : "") + (s.cost ? `\nCost so far: $${s.cost.toFixed(4)}` : "") +
       (s.firstPrompt ? `\n\nFirst prompt: ${s.firstPrompt.slice(0, 160)}` : "") + "\n\nClick to open and continue";
@@ -821,11 +1151,11 @@ function renderSessions() {
     const badge = c?.busy ? `<span class="badge run" data-tip="${tipAttr(`Claude is working on this chat (${c.status || "working"}).\nOpen it any time — it keeps running either way.`)}"><span class="spinner"></span>working</span>`
       : state.unseen.has(s.id) ? `<span class="badge new" data-tip="Finished while you were in another chat">● new</span>` : "";
     return `<div class="item ${state.session === s.id ? "active" : ""}" onclick="openSession('${s.id}')" data-tip="${tipAttr(tip)}">
-      <div class="t">${badge}${esc(s.title)}</div>
+      <div class="t">${badge}${esc(s.title)}<button class="ghost edit chat-edit" data-tip="Set group and tags for this chat" aria-label="Edit chat group and tags" onclick='event.stopPropagation();openChatDlg(${JSON.stringify(s.id)}, ${JSON.stringify(s.title).replace(/'/g, "&#39;")})'>🏷</button></div>
+      ${chatChips(s.id, true)}
       <div class="s">${ago(s.mtime)} · ${s.messages} msgs${s.gitBranch && s.gitBranch !== "HEAD" ? " · ⎇ " + esc(s.gitBranch) : ""}${s.cost ? " · $" + s.cost.toFixed(2) : ""}</div>
       ${s.lastPrompt ? `<div class="s">↳ ${esc(s.lastPrompt)}</div>` : ""}</div>`;
-  }).join("")
-    || '<div class="empty">No sessions yet.</div>';
+  }
 }
 
 /* ---------- worktrees ---------- */
@@ -834,17 +1164,66 @@ async function loadRepo(cwd) {
   let info; try { info = await api("/api/repo?cwd=" + encodeURIComponent(cwd)); } catch { return; }
   if (!info.isRepo || state.project?.cwd !== cwd) return;
   state.repo = info; $("wtSection").hidden = false;
-  $("wtList").innerHTML = info.worktrees.map((w, i) => {
-    const proj = state.projects.find(p => p.cwd === w.path);
-    return `<div class="wt-row"><div class="info">
-        <div><b data-tip="${tipAttr(w.branch ? `Branch checked out here: ${w.branch} (commit ${w.head})` : `Detached HEAD at commit ${w.head} — not on any branch`)}">${esc(w.branch || (w.detached ? "detached @" + w.head : w.head))}</b>${i === 0 ? '<span class="badge" data-tip="The main working tree (the original clone). It can\'t be removed here.">main</span>' : ""}${w.dirty ? '<span class="badge dirty" data-tip="Has uncommitted or untracked changes.\nRemoving this worktree would lose them.">changes</span>' : ""}${w.path === state.project.cwd ? '<span class="badge wt" data-tip="This is the folder of the project you selected">here</span>' : ""}</div>
-        <div class="s" style="color:var(--muted);font-size:12px" data-tip="${tipAttr(w.path)}">${esc(tilde(w.path))}</div></div>
-      ${proj && proj.key !== state.project.key ? `<button class="ghost" data-tip="Show the chats that were run in this worktree" aria-label="Show sessions" onclick="selectProject('${esc(proj.key)}')">☰</button>` : ""}
-      <button class="ghost" data-tip="Open a terminal window in this worktree" aria-label="Open shell here" onclick='openShell(${JSON.stringify(w.path)})'>&gt;_</button>
-      <button class="ghost" data-tip="Start a new Claude chat in this worktree" aria-label="New chat here" onclick='newChat(${JSON.stringify(w.path)})'>💬</button>
-      ${i > 0 ? `<button class="ghost" data-tip="${w.dirty ? "Remove this worktree folder — ⚠ its uncommitted changes will be lost (you'll be asked first)" : "Remove this worktree folder (the branch is kept). You'll be asked first."}" aria-label="Remove worktree" onclick='removeWorktree(${JSON.stringify(w.path)}, ${w.dirty})'>✕</button>` : ""}
-    </div>`;
-  }).join("");
+  $("wtCount").textContent = `· ${info.worktrees.length}`;
+  return info;
+}
+
+/* ---------- chats grouped by the worktree they ran in ---------- */
+const wtCollapsed = new Set(JSON.parse(store.get("wtCollapsed") || "[]"));
+function toggleWtg(path) {
+  wtCollapsed.has(path) ? wtCollapsed.delete(path) : wtCollapsed.add(path);
+  store.set("wtCollapsed", JSON.stringify([...wtCollapsed])); renderSessions();
+}
+function foldAllWt() {
+  const paths = [...$("sessions").querySelectorAll(".wtg")].map(e => e.dataset.path);
+  const fold = [...$("sessions").querySelectorAll(".wtg")].some(e => !e.classList.contains("collapsed"));
+  // removed worktrees start folded and use an "open:" key to stay unfolded
+  paths.forEach(p => { if (fold) { wtCollapsed.add(p); wtCollapsed.delete("open:" + p); } else { wtCollapsed.delete(p); wtCollapsed.add("open:" + p); } });
+  store.set("wtCollapsed", JSON.stringify([...wtCollapsed])); renderSessions();
+}
+function groupByWorktree(list) {
+  const groups = state.repo.worktrees.map((w, i) => ({ path: w.path, w, main: i === 0, items: [] }));
+  const removed = new Map();
+  for (const s of list) {
+    const cwd = s.cwd || state.repo.root;
+    let best = null;
+    for (const g of groups) if ((cwd === g.path || cwd.startsWith(g.path + "/")) && (!best || g.path.length > best.path.length)) best = g;
+    const m = cwd.match(/^(.*\/\.claude\/worktrees\/[^/]+)/);  // ran in a worktree that no longer exists
+    if (m && (!best || best.path.length < m[1].length)) {
+      if (!removed.has(m[1])) removed.set(m[1], { path: m[1], removed: true, items: [] });
+      removed.get(m[1]).items.push(s);
+    } else (best || groups[0]).items.push(s);
+  }
+  return [...groups, ...removed.values()];
+}
+function wtGroupHtml(g, searching) {
+  const w = g.w || {}, name = g.path.split("/").pop();
+  const here = state.project && (g.path === state.project.cwd);
+  const collapsed = !searching && (wtCollapsed.has(g.path) || (g.removed && !wtCollapsed.has("open:" + g.path)));
+  const J = v => JSON.stringify(v).replace(/'/g, "&#39;");
+  const branch = w.branch ? `⎇ ${w.branch}` : w.detached ? `detached @${w.head}` : "";
+  const target = state.repo.worktrees[0]?.branch;
+  const acts = g.removed ? "" : `
+    ${!g.main && w.branch && target ? `<button class="ghost wt-apply" data-tip="${tipAttr(`Apply this worktree's changes to ${target}…\nShows a preview first — nothing changes until you confirm.`)}" aria-label="Apply to branch" onclick='event.stopPropagation();openApply(${J(g.path)})'>⤵</button>` : ""}
+    <button class="ghost" data-tip="Open a terminal window in this worktree" aria-label="Open shell here" onclick='event.stopPropagation();openShell(${J(g.path)})'>&gt;_</button>
+    <button class="ghost" data-tip="Start a new Claude chat in this worktree" aria-label="New chat here" onclick='event.stopPropagation();newChat(${J(g.path)})'>💬</button>
+    ${!g.main ? `<button class="ghost" data-tip="${w.dirty ? "Remove this worktree folder — ⚠ its uncommitted changes will be lost (you'll be asked first)" : "Remove this worktree folder (the branch is kept). You'll be asked first."}" aria-label="Remove worktree" onclick='event.stopPropagation();removeWorktree(${J(g.path)}, ${!!w.dirty})'>✕</button>` : ""}`;
+  const badges = (g.main ? '<span class="badge" data-tip="The main working tree (the original clone). It can\'t be removed here.">main</span>' : "") +
+    (w.dirty ? '<span class="badge dirty" data-tip="Has uncommitted or untracked changes.">changes</span>' : "") +
+    (here ? '<span class="badge wt" data-tip="The folder of the project you selected">here</span>' : "") +
+    (g.removed ? '<span class="badge gone" data-tip="This worktree was removed. Its chats can still be read.">removed</span>' : "");
+  const tip = `${g.removed ? "Removed worktree" : g.main ? "Main checkout" : "Worktree"}: ${name}\n${g.path}` + (branch ? `\nBranch: ${w.branch || branch}` : "") +
+    `\n${g.items.length} chat${g.items.length === 1 ? "" : "s"} · click to ${collapsed ? "unfold" : "fold"}`;
+  return `<div class="wtg ${collapsed ? "collapsed" : ""} ${here ? "here" : ""} ${g.removed ? "removed" : ""}" data-path="${esc(g.path)}">
+    <div class="wtg-head" onclick='toggleWtg(${J(g.removed ? "open:" + g.path : g.path)})' data-tip="${tipAttr(tip)}">
+      <span class="caret">▼</span>
+      <div class="info"><div class="nm"><span class="t0">${esc(name)}</span>${badges}</div>${branch ? `<div class="br">${esc(branch)}</div>` : ""}</div>
+      <span class="acts">${acts}</span>
+      <span class="n" data-tip="Chats in this worktree">${g.items.length}</span>
+    </div>
+    <div class="wtg-body">${g.items.map(sessionItem).join("") ||
+      `<div class="wtg-empty">${g.removed ? "" : `No chats yet — <a href="#" onclick='event.preventDefault();newChat(${J(g.path)})'>start one here</a>`}</div>`}</div>
+  </div>`;
 }
 
 /* new-worktree modal: step 1 = inputs, step 2 = review & confirm */
@@ -914,14 +1293,88 @@ async function wtConfirm() {
   try {
     const r = await api("/api/worktree", { cwd: state.project.cwd, name: wtPlan.name, branch: wtPlan.branch, base: wtPlan.base });
     wtDlg.close(); toast("Created " + tilde(r.path) + " on " + r.branch);
-    await loadRepo(state.project.cwd);
+    await refreshRepoAndSessions();
     if (wtPlan.startChat) newChat(r.path);
   } catch (e) { $("wtConfirmErr").textContent = "Error: " + e.message; }
   btn.disabled = false; btn.textContent = "Confirm & create";
 }
+/* the selected project was that worktree: move to the main folder's project */
+async function afterWorktreeGone(path) {
+  if (state.project?.cwd === path && state.repo) {
+    await loadProjects();
+    const main = state.projects.find(p => p.cwd === state.repo.root);
+    if (main) return selectProject(main.key, true);
+  }
+  await refreshRepoAndSessions();
+}
+
+/* ---------- apply a worktree's changes to a branch ---------- */
+const applyDlg = $("applyDlg"); let applyCtx = null;
+function openApply(path) {
+  const info = state.repo, w = info.worktrees.find(x => x.path === path); if (!w) return;
+  const name = path.split("/").pop();
+  applyCtx = { path, name, branch: w.branch, dirty: w.dirty, preview: null };
+  $("applyTitle").textContent = `⤵ Apply worktree “${name}” (${w.branch})`;
+  const targets = info.worktrees.filter(x => x.path !== path && x.branch).map(x => x.branch);
+  $("applyTarget").innerHTML = targets.map(b => `<option>${esc(b)}</option>`).join("");
+  $("applyTarget").value = info.worktrees[0].branch && targets.includes(info.worktrees[0].branch) ? info.worktrees[0].branch : targets[0];
+  document.querySelector('input[name=applyMode][value=merge]').checked = true;
+  $("applyMsg").value = ""; $("applyRemove").checked = false; $("applyErr").textContent = "";
+  applyDlg.showModal(); loadApplyPreview();
+}
+async function loadApplyPreview() {
+  const c = applyCtx, target = $("applyTarget").value;
+  $("applyBtn").disabled = true; $("applyErr").textContent = "";
+  $("applyMsg").placeholder = `Merge worktree ${c.name} (${c.branch})`;
+  $("applyPreview").innerHTML = '<div class="apply-note"><span class="spinner"></span> Checking what would change…</div>';
+  let p; try { p = await api(`/api/worktree/preview?cwd=${encodeURIComponent(state.repo.root)}&source=${encodeURIComponent(c.path)}&target=${encodeURIComponent(target)}`); }
+  catch (e) { $("applyPreview").innerHTML = `<div class="apply-note bad">${esc(e.message)}</div>`; return; }
+  if ($("applyTarget").value !== target) return;  // changed while loading
+  c.preview = p;
+  const parts = [];
+  const nothing = !p.commits.length || p.alreadyApplied;
+  if (nothing) parts.push(`<div class="apply-note ok">✓ Nothing to apply — ${esc(target)} already has every commit from ${esc(p.sourceBranch)}.${p.sourceDirty.length ? " Only the uncommitted changes below are left." : ""}</div>`);
+  else {
+    parts.push(`<div class="field"><span>${p.commits.length}${p.commits.length === 50 ? "+" : ""} commit${p.commits.length === 1 ? "" : "s"} to bring into ${esc(target)}</span>
+      <div class="apply-commits">${p.commits.map(l => esc(l.replace("\t", "  "))).join("\n")}</div></div>`);
+    if (p.stat) parts.push(`<details><summary style="cursor:pointer;font-size:12.5px;color:var(--muted)" data-tip="Files that change, with lines added/removed">Files changed</summary><div class="apply-commits">${esc(p.stat)}</div></details>`);
+  }
+  if (p.conflicts.length) parts.push(`<div class="apply-note bad">✗ These files would conflict with ${esc(target)}: <b>${p.conflicts.map(esc).join(", ")}</b><br>
+    Resolve first — e.g. in the worktree run <code>!git merge ${esc(target)}</code>, fix the files (or ask Claude there), commit, then apply again.</div>`);
+  else if (!nothing && p.mergeCheck) parts.push(`<div class="apply-note ok">✓ No conflicts — applies cleanly.${p.behind ? ` (${esc(target)} also has ${p.behind} newer commit${p.behind === 1 ? "" : "s"}; they're kept.)` : ""}</div>`);
+  if (p.sourceDirty.length) parts.push(`<div class="apply-note warn">The worktree has ${p.sourceDirty.length} uncommitted change${p.sourceDirty.length === 1 ? "" : "s"}.
+      <label class="check" style="margin-top:6px" data-tip="Runs git add -A and git commit in the worktree before applying"><input type="checkbox" id="applyCommitDirty" onchange="syncApplyBtn()"> Commit them first, with message:</label>
+      <input id="applyCommitMsg" style="width:100%;margin-top:4px" placeholder="Work from worktree ${esc(c.name)}">
+      <div style="margin-top:4px">Otherwise they stay in the worktree and are not applied.</div></div>`);
+  if (p.targetDirty.length) parts.push(`<div class="apply-note warn">${esc(target)} (${esc(tilde(p.targetPath))}) has ${p.targetDirty.length} uncommitted change${p.targetDirty.length === 1 ? "" : "s"}. Git stops if the merge would touch those files — nothing is changed in that case.</div>`);
+  $("applyPreview").innerHTML = parts.join("");
+  syncApplyBtn();
+}
+function syncApplyBtn() {
+  const p = applyCtx?.preview; if (!p) return;
+  const commitFirst = $("applyCommitDirty")?.checked;
+  const nothing = (!p.commits.length || p.alreadyApplied) && !commitFirst;
+  $("applyBtn").disabled = nothing || p.conflicts.length > 0;
+  $("applyBtn").dataset.tip = p.conflicts.length ? "Blocked: resolve the conflicts first" : nothing ? "Nothing to apply" : `Apply into ${$("applyTarget").value} now`;
+}
+async function runApply() {
+  const c = applyCtx, btn = $("applyBtn"), target = $("applyTarget").value;
+  const mode = document.querySelector("input[name=applyMode]:checked").value;
+  const removeAfter = $("applyRemove").checked;
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Applying…'; $("applyErr").textContent = "";
+  try {
+    const r = await api("/api/worktree/apply", { cwd: state.repo.root, source: c.path, target, mode, message: $("applyMsg").value,
+      commitDirty: !!$("applyCommitDirty")?.checked, commitMessage: $("applyCommitMsg")?.value || "", removeAfter });
+    applyDlg.close();
+    toast(`✓ ${r.steps.join(" · ")} — ${target} is now at ${r.head}`);
+    if (removeAfter) await afterWorktreeGone(c.path); else await refreshRepoAndSessions();
+  } catch (e) { $("applyErr").textContent = e.message; }
+  btn.innerHTML = "⤵ Apply"; syncApplyBtn();
+}
+
 async function removeWorktree(path, dirty) {
   if (!confirm(`Remove worktree ${path}?` + (dirty ? "\n\nIt has UNCOMMITTED CHANGES that will be lost." : ""))) return;
-  try { await api("/api/worktree/remove", { cwd: state.project.cwd, path, force: dirty }); toast("Removed"); loadRepo(state.project.cwd); }
+  try { await api("/api/worktree/remove", { cwd: state.project.cwd, path, force: dirty }); toast("Removed"); await afterWorktreeGone(path); }
   catch (e) { toast("Error: " + e.message); }
 }
 
@@ -1396,13 +1849,13 @@ async function refreshAfterRun(chat) {
   await loadProjects();
   const p = state.projects.find(x => x.cwd === chat.cwd);
   if (state.chat === chat && p && state.project?.key !== p.key) await selectProject(p.key, true);
-  else if (state.project) { state.sessions = await api("/api/sessions?project=" + encodeURIComponent(state.project.key)); renderSessions(); }
+  else if (state.project) { state.sessions = await fetchSessions(); renderSessions(); }
   const s = state.sessions.find(x => x.id === chat.session);
   if (s) { chat.title = s.title; if (state.chat === chat) $("chatTitle").textContent = s.title; renderRuns(); }
 }
 async function stopRun() { if (state.run) { await api("/api/stop", { run: state.run }); toast("Stopped"); } }
 async function openShell(cwd) {
-  try { const r = await api("/api/shell", { cwd }); toast(`Opened ${r.terminal} in ${tilde(cwd)}`); } catch (e) { toast(e.message); }
+  try { const r = await api("/api/open-terminal", { cwd }); toast(`Opened ${r.terminal} in ${tilde(cwd)}`); } catch (e) { toast(e.message); }
 }
 function copyResume() {
   const cmd = `cd '${state.cwd.replace(/'/g, "'\\''")}' && claude --resume ${state.session}`;
