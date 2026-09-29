@@ -60,6 +60,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 .badge.wt{color:var(--accent);border-color:var(--accent)}
 .badge.dirty{color:var(--warn);border-color:var(--warn)}
 .badge.gone{color:var(--err);border-color:var(--err)}
+.badge.run{color:var(--accent);border-color:var(--accent)}
+.badge.run .spinner{width:8px;height:8px;border-width:1.5px;margin-right:3px;vertical-align:-1px}
+.badge.new{color:var(--ok);border-color:var(--ok);font-weight:600}
+.t>.badge:first-child{margin:0 6px 0 0}
+/* chats working in the background */
+.runs{position:relative}
+.runs-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:15;width:340px;max-height:50vh;overflow:auto;background:var(--panel);
+  border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:4px}
+.runs-menu .ritem{padding:7px 10px;border-radius:7px;cursor:pointer;display:flex;flex-direction:column;gap:1px}
+.runs-menu .ritem:hover{background:var(--panel2)}
+.runs-menu .ritem.cur{background:var(--accent-weak)}
+.runs-menu .ritem b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.runs-menu .ritem span{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #left{background:var(--panel)}
 #mid{background:var(--bg)}
 .brand{font-weight:700;font-size:15px;flex:1}
@@ -102,6 +115,7 @@ section.wt summary{cursor:pointer;font-size:12px;text-transform:uppercase;letter
   font:13px/1.5 var(--mono);overflow:hidden;box-shadow:var(--user-shadow)}
 .term .line{padding:8px 12px;display:flex;gap:8px;white-space:pre-wrap;word-break:break-word}
 .term .ps{color:var(--term-accent);font-weight:700;user-select:none;flex:none}
+.term .path{color:var(--term-dim);user-select:none;flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
 .term .kind{margin-left:auto;flex:none;font:600 10px/18px system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--term-dim);
   border:1px solid var(--term-border);border-radius:5px;padding:0 5px;height:18px}
 .term .out{background:transparent;border:0;border-radius:0;border-top:1px solid var(--term-border);padding:7px 12px;margin:0;white-space:pre-wrap;word-break:break-word;color:var(--term-dim);
@@ -133,6 +147,15 @@ details.think div{white-space:pre-wrap;border-left:2px solid var(--border);paddi
 .composer{border-top:1px solid var(--border);background:var(--panel);padding:10px 14px}
 .composer-inner{max-width:860px;margin:0 auto}
 #prompt{width:100%;resize:none;min-height:60px;max-height:260px;border-radius:10px;padding:10px 12px}
+/* shell mode: typing ! at the start turns the box into a terminal */
+#prompt.shell{background:var(--term-bg);color:var(--term-fg);border-color:var(--term-accent);font:13.5px/1.5 var(--mono);caret-color:var(--term-accent)}
+#prompt.shell::placeholder{color:var(--term-dim)}
+.term .exit{border-top:1px solid var(--term-border);padding:4px 12px;font:600 11px/18px system-ui,sans-serif;letter-spacing:.03em;color:var(--term-dim)}
+.term .exit.ok{color:#7fcf9a}.term .exit.bad{color:var(--term-err)}
+.term .exit .spinner{width:9px;height:9px;border-color:var(--term-accent);border-right-color:transparent;margin-right:4px}
+.shell-ctx{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:12px;color:var(--muted)}
+.shell-ctx code{font-family:var(--mono);font-size:11.5px;background:var(--term-bg);color:var(--term-fg);padding:1px 6px;border-radius:5px;max-width:260px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom}
 .bar{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
 .bar .sp{flex:1}
 .bar label{font-size:12px;color:var(--muted);display:flex;gap:4px;align-items:center}
@@ -324,6 +347,10 @@ Work on several things in parallel without switching branches.">Git worktrees</s
       <div id="chatTitle" data-tip="Session title (set by Claude or by /rename)">No chat open</div>
       <div id="chatSub" data-tip="Working folder · session ID"></div>
     </div>
+    <div class="runs" id="runs" hidden>
+      <button class="ghost" id="runsBtn" onclick="toggleRuns(event)"></button>
+      <div class="runs-menu" id="runsMenu" hidden></div>
+    </div>
     <button class="ghost" id="copyBtn" data-tip="Copy a command that continues this exact chat in your terminal:
 cd <folder> && claude --resume <id>" onclick="copyResume()" hidden>⧉ Terminal cmd</button>
     <button class="ghost" id="chatShellBtn" data-tip="Open a terminal window in this chat's working folder" aria-label="Open shell here" onclick="openShell(state.cwd)" hidden>&gt;_</button>
@@ -333,10 +360,11 @@ cd <folder> && claude --resume <id>" onclick="copyResume()" hidden>⧉ Terminal 
     <button class="primary" onclick="openNews('unread')" data-tip="Open the updates inbox, showing unread items">View</button>
     <button class="ghost" onclick="dismissBanner()" data-tip="Hide this banner until something new arrives (items stay unread in 🔔)" aria-label="Dismiss">✕</button>
   </div>
-  <div id="msgs"><div class="empty">Open a session to read and continue it, or start a new chat.</div></div>
+  <div id="msgs"><div class="empty" id="msgsEmpty">Open a session to read and continue it, or start a new chat.</div></div>
   <div class="composer">
     <div class="composer-inner">
-      <textarea id="prompt" data-tip="Enter sends · Shift+Enter adds a new line" placeholder="Message Claude…  (Enter to send, Shift+Enter for newline)" disabled></textarea>
+      <div class="shell-ctx" id="shellCtx" hidden></div>
+      <textarea id="prompt" data-tip="Enter sends · Shift+Enter adds a new line&#10;Start with ! to run a shell command, e.g. !git status" placeholder="Message Claude…  (Enter to send · Shift+Enter new line · ! for shell)" disabled></textarea>
       <div class="bar">
         <label data-tip="Permission mode: what Claude may do without asking.
 In this UI Claude can't ask you, so anything not allowed is denied.">Mode
@@ -617,8 +645,12 @@ function projectItem(p) {
   return `<div class="item ${state.project?.key === p.key ? "active" : ""}" draggable="true" data-cwd="${esc(p.cwd)}" data-tip="${tipAttr(tip)}"
       onclick="selectProject('${esc(p.key)}')" ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')">
     <button class="ghost edit" data-tip="Set group and tags for this folder" aria-label="Edit group and tags" onclick='event.stopPropagation();openFolderDlg(${JSON.stringify(p.cwd)})'>🏷</button>
+<<<<<<< Updated upstream
     ${p.exists ? `<button class="ghost edit shell" data-tip="${SHELL_TIP}" aria-label="Open shell here" onclick='event.stopPropagation();openShell(${JSON.stringify(p.cwd)})'>&gt;_</button>` : ""}
     <div class="t">${esc(name)}${p.isWorktree ? `<span class="badge wt" data-tip="${WT_BADGE_TIP}">worktree</span>` : ""}${p.exists ? "" : `<span class="badge gone" data-tip="${MISSING_TIP}">missing</span>`}</div>
+=======
+    <div class="t">${[...state.chats.values()].some(c => c.busy && c.cwd === p.cwd) ? `<span class="badge run" data-tip="A chat in this folder is running"><span class="spinner"></span>working</span>` : ""}${esc(name)}${p.isWorktree ? `<span class="badge wt" data-tip="${WT_BADGE_TIP}">worktree</span>` : ""}${p.exists ? "" : `<span class="badge gone" data-tip="${MISSING_TIP}">missing</span>`}</div>
+>>>>>>> Stashed changes
     <div class="s">${esc(tilde(p.cwd))}</div>
     <div class="s">${p.sessions} session${p.sessions === 1 ? "" : "s"} · ${ago(p.mtime)}</div>
     ${tags.length ? `<div class="chips">${tags.map(t => chip(t)).join("")}</div>` : ""}</div>`;
@@ -785,8 +817,11 @@ function renderSessions() {
     const tip = `${s.title}\nSession ${s.id}\nLast active ${new Date(s.mtime * 1000).toLocaleString()} · ${s.messages} messages` +
       (s.gitBranch && s.gitBranch !== "HEAD" ? `\nGit branch: ${s.gitBranch}` : "") + (s.cost ? `\nCost so far: $${s.cost.toFixed(4)}` : "") +
       (s.firstPrompt ? `\n\nFirst prompt: ${s.firstPrompt.slice(0, 160)}` : "") + "\n\nClick to open and continue";
+    const c = state.chats.get(s.id);
+    const badge = c?.busy ? `<span class="badge run" data-tip="${tipAttr(`Claude is working on this chat (${c.status || "working"}).\nOpen it any time — it keeps running either way.`)}"><span class="spinner"></span>working</span>`
+      : state.unseen.has(s.id) ? `<span class="badge new" data-tip="Finished while you were in another chat">● new</span>` : "";
     return `<div class="item ${state.session === s.id ? "active" : ""}" onclick="openSession('${s.id}')" data-tip="${tipAttr(tip)}">
-      <div class="t">${esc(s.title)}</div>
+      <div class="t">${badge}${esc(s.title)}</div>
       <div class="s">${ago(s.mtime)} · ${s.messages} msgs${s.gitBranch && s.gitBranch !== "HEAD" ? " · ⎇ " + esc(s.gitBranch) : ""}${s.cost ? " · $" + s.cost.toFixed(2) : ""}</div>
       ${s.lastPrompt ? `<div class="s">↳ ${esc(s.lastPrompt)}</div>` : ""}</div>`;
   }).join("")
@@ -907,26 +942,82 @@ function setChatHeader(title, cwd, id) {
   $("chatSub").dataset.tip = `Working folder: ${cwd}\n` + (id ? `Session ID: ${id}` : "New session — an ID is assigned when you send the first message");
   $("copyBtn").hidden = !id; $("chatShellBtn").hidden = false; $("prompt").disabled = false; $("sendBtn").disabled = false;
 }
+/* ---------- chats: each open conversation has its own pane and keeps running while you look at another ---------- */
+let chatSeq = 0;
+state.chats = new Map();   // key (session id, or "new-N" until Claude assigns one) -> chat
+state.chat = null;         // the chat on screen
+state.unseen = new Set();  // session ids that finished while you were elsewhere
+// state.session / cwd / shellCwd / shellCtx / busy / run read and write the chat on screen
+for (const k of ["session", "cwd", "shellCwd", "shellCtx", "busy", "run"])
+  Object.defineProperty(state, k, { configurable: true,
+    get: () => state.chat ? state.chat[k] : (k === "shellCtx" ? [] : null), set: v => { if (state.chat) state.chat[k] = v; } });
+const curPane = () => state.chat?.pane || $("msgs");
+
+function makeChat(key, fields) {
+  const pane = document.createElement("div"); pane.className = "pane"; pane.hidden = true; $("msgs").appendChild(pane);
+  const chat = { key, session: null, cwd: null, shellCwd: null, shellCtx: [], busy: false, run: null, status: "", title: "New chat", draft: "", pane, ...fields };
+  state.chats.set(key, chat); return chat;
+}
+const keepChat = c => c.busy || c.shellCtx.length;  // otherwise it's reloaded fresh from disk next time
+function dropChat(c) { c.pane.remove(); if (state.chats.get(c.key) === c) state.chats.delete(c.key); }
+function leaveChat() {
+  const c = state.chat; if (!c) return;
+  c.draft = $("prompt").value; c.scroll = $("msgs").scrollTop; c.pane.hidden = true;
+  state.chat = null;
+  if (!keepChat(c)) dropChat(c);
+}
+function showChat(c) {
+  state.chat = c; $("msgsEmpty").hidden = true; c.pane.hidden = false;
+  if (c.session) state.unseen.delete(c.session);
+  setChatHeader(c.title, c.cwd, c.session);
+  $("prompt").value = c.draft || ""; $("prompt").dispatchEvent(new Event("input"));
+  renderShellCtx(); syncBusyUI(); renderSessions(); renderRuns(); setView("chat");
+}
+function rekeyChat(c, id) { state.chats.delete(c.key); c.key = id; c.session = id; state.chats.set(id, c); }
 function newChat(cwd) {
-  if (state.busy) return toast("Wait for the current reply to finish");
-  state.session = null; state.cwd = cwd; renderSessions();
-  setChatHeader("New chat", cwd, null);
-  $("msgs").innerHTML = `<div class="empty">New Claude session in <code>${esc(tilde(cwd))}</code></div>`;
-  setView("chat"); $("prompt").focus();
+  leaveChat();
+  const c = makeChat("new-" + (++chatSeq), { cwd, shellCwd: cwd });
+  c.pane.innerHTML = `<div class="empty">New Claude session in <code>${esc(tilde(cwd))}</code></div>`;
+  showChat(c); $("prompt").focus();
 }
 async function openSession(id) {
-  if (state.busy) return toast("Wait for the current reply to finish");
-  state.session = id; renderSessions(); setView("chat");
-  $("msgs").innerHTML = '<div class="empty"><span class="spinner"></span></div>';
-  let data; try { data = await api("/api/session?id=" + id); } catch (e) { $("msgs").innerHTML = `<div class="empty errbox">${esc(e.message)}</div>`; return; }
-  state.cwd = data.meta.cwd || state.project.cwd;
-  setChatHeader(data.meta.title, state.cwd, id);
-  $("msgs").innerHTML = "";
-  for (const m of data.messages) renderMessage(m.role, m.blocks, m.ts);
-  scrollDown(true);
+  if (state.chat?.key === id && keepChat(state.chat)) return;  // already open and live
+  leaveChat();
+  const kept = state.chats.get(id);  // still working, or has shell results waiting: show it as it is
+  if (kept) { showChat(kept); $("msgs").scrollTop = kept.busy ? $("msgs").scrollHeight : (kept.scroll ?? $("msgs").scrollHeight); return; }
+  const c = makeChat(id, { session: id, cwd: state.project?.cwd, title: state.sessions.find(s => s.id === id)?.title || "Loading…" });
+  c.pane.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+  showChat(c);
+  let data; try { data = await api("/api/session?id=" + id); } catch (e) { c.pane.innerHTML = `<div class="empty errbox">${esc(e.message)}</div>`; return; }
+  c.cwd = data.meta.cwd || c.cwd;
+  c.shellCwd = data.meta.shellCwd || c.cwd;  // where the session left off; `!` commands start here
+  c.title = data.meta.title;
+  if (state.chat === c) setChatHeader(c.title, c.cwd, id);
+  c.pane.innerHTML = "";
+  for (const m of data.messages) renderMessage(m.role, m.blocks, m.ts, c.pane);
+  scrollDown(true, c.pane);
 }
-function scrollDown(force) {
+function scrollDown(force, pane = curPane()) {
+  if (pane !== curPane()) return;  // a chat in the background: nothing to scroll
   const el = $("msgs"); if (force || el.scrollHeight - el.scrollTop - el.clientHeight < 200) el.scrollTop = el.scrollHeight;
+}
+
+/* "N working" pill in the chat header: jump to any chat Claude is busy with */
+function renderRuns() {
+  const busy = [...state.chats.values()].filter(c => c.busy);
+  $("runs").hidden = !busy.length;
+  if (!busy.length) { $("runsMenu").hidden = true; return; }
+  $("runsBtn").innerHTML = `<span class="spinner"></span> ${busy.length} working`;
+  $("runsBtn").dataset.tip = `${busy.length} chat${busy.length === 1 ? " is" : "s are"} running — click to jump to one.\nThey keep going while you read or start other chats.`;
+  $("runsMenu").innerHTML = busy.map(c => `<div class="ritem ${c === state.chat ? "cur" : ""}" onclick="jumpChat('${c.key}')" data-tip="${tipAttr(c.cwd || "")}">
+    <b>${esc(c.title)}${c === state.chat ? " (open)" : ""}</b><span>${esc(c.status || "Working…")} · ${esc(tilde(c.cwd))}</span></div>`).join("");
+}
+function toggleRuns(e) { e.stopPropagation(); $("runsMenu").hidden = !$("runsMenu").hidden; }
+document.addEventListener("click", e => { if (!e.target.closest?.("#runs")) $("runsMenu").hidden = true; });
+function jumpChat(key) {
+  $("runsMenu").hidden = true;
+  const c = state.chats.get(key); if (!c || c === state.chat) return;
+  leaveChat(); showChat(c); $("msgs").scrollTop = $("msgs").scrollHeight;
 }
 function toolSummary(name, input) {
   input = input || {};
@@ -939,9 +1030,9 @@ function toolEl(b) {
     <div class="body"><pre class="out">${esc(JSON.stringify(b.input, null, 2))}</pre></div>`;
   return d;
 }
-function attachResult(b, container) {
+function attachResult(b, container, pane = curPane()) {
   const pre = document.createElement("pre"); pre.className = "out"; pre.textContent = b.text || "(no output)";
-  const target = b.id && document.querySelector(`details.tool[data-tool-id="${CSS.escape(b.id)}"]`);
+  const target = b.id && pane.querySelector(`details.tool[data-tool-id="${CSS.escape(b.id)}"]`);
   if (target) { target.querySelector(".body").appendChild(pre); if (b.isError) target.classList.add("err"); return; }
   const d = document.createElement("details"); d.className = "tool" + (b.isError ? " err" : "");
   d.innerHTML = `<summary data-tip="Output of a tool call — click to show">↳ tool result</summary><div class="body"></div>`; d.querySelector(".body").appendChild(pre);
@@ -950,6 +1041,15 @@ function attachResult(b, container) {
 /* ---- your messages: recognise shell (!) commands, slash commands, their output and pasted text ---- */
 const stripAnsi = s => (s || "").replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
 const tagText = (s, tag) => { const m = s.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`)); return m ? m[1] : null; };
+/* A message can start with shell results that were sent along with it (<bash-input>…<bash-stdout>…),
+   exactly as Claude Code's own ! mode sends them. Split those off so each renders as a terminal block. */
+function splitUserText(t) {
+  const re = /^\s*(<bash-input>[\s\S]*?<\/bash-input>|<bash-stdout>[\s\S]*?<\/bash-stdout>(?:\s*<bash-stderr>[\s\S]*?<\/bash-stderr>)?|<bash-stderr>[\s\S]*?<\/bash-stderr>)/;
+  const out = []; let rest = t, m;
+  while ((m = rest.match(re))) { out.push(m[1]); rest = rest.slice(m[0].length); }
+  if (rest.trim() || !out.length) out.push(rest);
+  return out;
+}
 function classifyUserText(t) {
   const s = t.trim();
   if (s.startsWith("<bash-input>")) return { kind: "bash", cmd: (tagText(s, "bash-input") || "").trim() };
@@ -972,7 +1072,7 @@ const CMD_KIND = {
 };
 function termEl(c) {
   const k = CMD_KIND[c.kind], box = document.createElement("div"); box.className = "term";
-  box.innerHTML = `<div class="line"><span class="ps">${k.ps}</span><span class="c"></span><span class="kind" data-tip="${tipAttr(k.tip)}">${k.label}</span></div>`;
+  box.innerHTML = `<div class="line">${c.cwd ? `<span class="path" data-tip="${tipAttr("Ran in " + c.cwd)}"><bdi dir="ltr">${esc(tilde(c.cwd))}</bdi></span>` : ""}<span class="ps">${k.ps}</span><span class="c"></span><span class="kind" data-tip="${tipAttr(k.tip)}">${k.label}</span></div>`;
   box.querySelector(".c").textContent = c.cmd;
   if (c.body) {
     const d = document.createElement("details"); d.innerHTML = `<summary data-tip="The full prompt this command sent to Claude">Show expanded prompt</summary><pre></pre>`;
@@ -980,9 +1080,9 @@ function termEl(c) {
   }
   return box;
 }
-function addCmdOutput(p, container) {
+function addCmdOutput(p, container, pane = curPane()) {
   // attach to the command it belongs to: last terminal block in this message, else in the previous message
-  const lastMsg = $("msgs").lastElementChild;
+  const lastMsg = pane.lastElementChild;
   const host = container || (lastMsg?.classList.contains("user") ? lastMsg : null);
   let box = host ? [...host.querySelectorAll(".term")].pop() : null;
   if (!box) {  // output without a visible command: show it on its own
@@ -990,7 +1090,7 @@ function addCmdOutput(p, container) {
     if (container) container.appendChild(box);
     else {
       const wrap = document.createElement("div"); wrap.className = "msg user";
-      wrap.innerHTML = `<div class="role" data-tip="Output of a command you ran">Output</div>`; wrap.appendChild(box); $("msgs").appendChild(wrap);
+      wrap.innerHTML = `<div class="role" data-tip="Output of a command you ran">Output</div>`; wrap.appendChild(box); pane.appendChild(wrap);
     }
   }
   for (const [text, cls, tip] of [[p.out, "out", "Command output"], [p.err, "out err", "Error output (stderr)"]]) {
@@ -1011,30 +1111,31 @@ function fillBubble(el, text) {
   addText(text.slice(last));
 }
 
-function renderMessage(role, blocks, ts = new Date().toISOString()) {
+function renderMessage(role, blocks, ts = new Date().toISOString(), pane = curPane()) {
   const onlyResults = blocks.every(b => b.type === "tool_result");
-  if (onlyResults) { const last = $("msgs").lastElementChild || $("msgs"); blocks.forEach(b => attachResult(b, last)); return; }
-  const parts = role === "user" ? blocks.filter(b => b.type === "text").map(b => classifyUserText(b.text)) : [];
-  if (parts.length && parts.length === blocks.length && parts.every(p => p.kind === "output" || p.kind === "notice")) {
+  if (onlyResults) { const last = pane.lastElementChild || pane; blocks.forEach(b => attachResult(b, last, pane)); return; }
+  const partsOf = blocks.map(b => role === "user" && b.type === "text" ? splitUserText(b.text).map(classifyUserText) : null);
+  const parts = partsOf.flat().filter(Boolean);
+  if (parts.length && blocks.every(b => b.type === "text") && parts.every(p => p.kind === "output" || p.kind === "notice")) {
     for (const p of parts) {
-      if (p.kind === "output") addCmdOutput(p);
-      else { const n = document.createElement("div"); n.className = "notice"; n.dataset.tip = p.tip || "A background task started earlier reported back"; n.textContent = p.tip ? "⏸ " + p.text : "⏱ Background task: " + p.text; $("msgs").appendChild(n); }
+      if (p.kind === "output") addCmdOutput(p, null, pane);
+      else { const n = document.createElement("div"); n.className = "notice"; n.dataset.tip = p.tip || "A background task started earlier reported back"; n.textContent = p.tip ? "⏸ " + p.text : "⏱ Background task: " + p.text; pane.appendChild(n); }
     }
     return;
   }
-  const isCmd = parts.some(p => CMD_KIND[p.kind]);
+  const isCmd = parts.some(p => CMD_KIND[p.kind]) && !parts.some(p => p.kind === "text");
   const wrap = document.createElement("div"); wrap.className = "msg " + role;
   wrap.innerHTML = `<div class="role">${role === "user" ? (isCmd ? "You · command" : "You") : "Claude"}</div>`;
   if (ts) wrap.querySelector(".role").dataset.tip = (role === "user" ? "Sent " : "Replied ") + new Date(ts).toLocaleString();
-  let pi = 0;
-  for (const b of blocks) {
+  blocks.forEach((b, bi) => {
     if (b.type === "text") {
       if (role === "user") {
-        const p = parts[pi++];
-        if (CMD_KIND[p.kind]) wrap.appendChild(termEl(p));
-        else if (p.kind === "output") addCmdOutput(p, wrap);
-        else if (p.kind === "text") { const el = document.createElement("div"); el.className = "bubble"; fillBubble(el, p.text); wrap.appendChild(el); }
-        continue;
+        for (const p of partsOf[bi]) {
+          if (CMD_KIND[p.kind]) wrap.appendChild(termEl(p));
+          else if (p.kind === "output") addCmdOutput(p, wrap, pane);
+          else if (p.kind === "text") { const el = document.createElement("div"); el.className = "bubble"; fillBubble(el, p.text); wrap.appendChild(el); }
+        }
+        return;
       }
       const el = document.createElement("div"); el.className = "md"; el.innerHTML = md(b.text);
       wrap.appendChild(el);
@@ -1042,18 +1143,27 @@ function renderMessage(role, blocks, ts = new Date().toISOString()) {
       const d = document.createElement("details"); d.className = "think";
       d.innerHTML = `<summary data-tip="Claude's internal reasoning before answering — click to show">Thinking</summary><div></div>`; d.querySelector("div").textContent = b.text; wrap.appendChild(d);
     } else if (b.type === "tool_use") wrap.appendChild(toolEl(b));
-    else if (b.type === "tool_result") attachResult(b, wrap);
-  }
+    else if (b.type === "tool_result") attachResult(b, wrap, pane);
+  });
   // merge consecutive assistant chunks visually
-  const prev = $("msgs").lastElementChild;
+  const prev = pane.lastElementChild;
   if (role === "assistant" && prev?.classList.contains("assistant") && !prev.classList.contains("live")) {
     wrap.querySelector(".role").remove(); [...wrap.children].forEach(c => prev.appendChild(c));
-  } else $("msgs").appendChild(wrap);
+  } else pane.appendChild(wrap);
 }
 
-function setBusy(b, label) {
-  state.busy = b; $("sendBtn").disabled = b; $("stopBtn").hidden = !b;
-  $("status").innerHTML = b ? `<span class="spinner"></span> ${esc(label || "Working…")}` : (label || "");
+function setBusy(chat, b, label) {  // per chat; only the chat on screen drives the controls
+  const changed = chat.busy !== b;
+  chat.busy = b; chat.status = label || "";
+  if (chat === state.chat) syncBusyUI();
+  renderRuns();
+  if (changed) { renderSessions(); renderProjects(); }
+}
+function syncBusyUI() {
+  const c = state.chat, b = !!c?.busy;
+  $("sendBtn").disabled = b || !c; $("stopBtn").hidden = !b;
+  if (b) $("status").innerHTML = `<span class="spinner"></span> ${esc(c.status || "Working…")}`;
+  else syncShellMode();
 }
 $("prompt").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
 $("prompt").addEventListener("input", e => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 260) + "px"; });
@@ -1069,7 +1179,7 @@ for (const [id, label] of [["permMode", "Permission mode"], ["model", "Model"], 
 
 /* startup info from the stream-json system/init event: version, model, mode, MCP servers, plugins.
    plugin_errors entries carry the failing directory in `path` since Claude Code 2.1.283. */
-function showInitInfo(ev) {
+function showInitInfo(ev, pane = curPane()) {
   const mcp = ev.mcp_servers || [];
   // "pending" = still connecting (its tools may arrive on a later turn); anything else not connected is a problem
   const ok = mcp.filter(m => m.status === "connected"), bad = mcp.filter(m => !["connected", "pending"].includes(m.status));
@@ -1082,7 +1192,7 @@ function showInitInfo(ev) {
     (mcp.length ? "\n\nMCP servers:\n" + mcp.map(m => `${m.status === "connected" ? "✓" : m.status === "pending" ? "…" : "✗"} ${m.name} (${m.status === "pending" ? "still connecting" : m.status})`).join("\n") : "") +
     (plugins.length ? "\n\nPlugins:\n" + plugins.map(x => `• ${x.name}${x.version ? " " + x.version : ""}`).join("\n") : "") +
     (ev.tools ? `\n\nTools available: ${ev.tools.length}` : "");
-  $("msgs").appendChild(line);
+  pane.appendChild(line);
   const warns = [
     ...bad.map(m => `MCP server “${m.name}” ${m.status === "needs-auth" ? "needs authentication" : m.status} — its tools aren't available in this reply`),
     ...perrs.map(e => `Plugin failed to load${e.path ? ` from ${tilde(e.path)}` : ""}${e.name ? ` (${e.name})` : ""}: ${e.error || e.message || e.reason || JSON.stringify(e)}`),
@@ -1090,48 +1200,56 @@ function showInitInfo(ev) {
   for (const w of warns) {
     const d = document.createElement("div"); d.className = "meta-line"; d.style.color = "var(--warn)"; d.textContent = "⚠ " + w;
     d.dataset.tip = w.startsWith("MCP") ? "Fix it in your terminal with /mcp (or `claude mcp`), then send again" : "Check the plugin directory shown, or run /plugin in your terminal";
-    $("msgs").appendChild(d);
+    pane.appendChild(d);
   }
-  scrollDown();
+  scrollDown(false, pane);
 }
 
 async function send() {
-  const prompt = $("prompt").value.trim();
-  if (!prompt || state.busy || !state.cwd) return;
-  if ($("msgs").querySelector(".empty")) $("msgs").innerHTML = "";
-  $("prompt").value = ""; $("prompt").style.height = "";
-  renderMessage("user", [{ type: "text", text: prompt }]); scrollDown(true);
-  setBusy(true, "Starting Claude…");
+  const chat = state.chat, prompt = $("prompt").value.trim();
+  if (!chat || !prompt || chat.busy || !chat.cwd) return;
+  const pane = chat.pane;
+  if (pane.querySelector(".empty")) pane.innerHTML = "";
+  $("prompt").value = ""; $("prompt").style.height = ""; syncShellMode();
+  if (prompt.startsWith("!")) return runShell(prompt.slice(1).trim());
+  // shell results since the last message go along with it, like Claude Code's own ! mode
+  const sentCtx = chat.shellCtx; chat.shellCtx = []; renderShellCtx();
+  const fullPrompt = sentCtx.map(r => `<bash-input>${r.cmd}</bash-input>\n<bash-stdout>${r.out}</bash-stdout><bash-stderr>${r.err}</bash-stderr>`)
+    .concat(prompt).join("\n\n");
+  renderMessage("user", [{ type: "text", text: prompt }], undefined, pane); scrollDown(true, pane);
+  setBusy(chat, true, "Starting Claude…");
 
   let live = null; // live streaming element for the in-progress assistant message
   const ensureLive = () => {
-    if (!live) { live = document.createElement("div"); live.className = "msg assistant live"; live.innerHTML = '<div class="role">Claude</div><div class="md"></div>'; live._text = ""; $("msgs").appendChild(live); }
+    if (!live) { live = document.createElement("div"); live.className = "msg assistant live"; live.innerHTML = '<div class="role">Claude</div><div class="md"></div>'; live._text = ""; pane.appendChild(live); }
     return live;
   };
   const handle = ev => {
     switch (ev.type) {
-      case "ui_run": state.run = ev.run; break;
+      case "ui_run": chat.run = ev.run; break;
       case "system":
         if (ev.subtype === "init" && ev.session_id) {
-          if (!state.session) { state.session = ev.session_id; setChatHeader("New chat", state.cwd, ev.session_id); }
-          showInitInfo(ev);
-          setBusy(true, "Thinking…");
+          if (!chat.session) { rekeyChat(chat, ev.session_id); if (state.chat === chat) setChatHeader(chat.title, chat.cwd, chat.session); }
+          showInitInfo(ev, pane);
+          setBusy(chat, true, "Thinking…");
         }
         break;
       case "stream_event": {
         const e = ev.event || {};
-        if (e.type === "content_block_start" && e.content_block?.type === "tool_use") setBusy(true, "Running " + e.content_block.name + "…");
+        if (e.type === "content_block_start" && e.content_block?.type === "tool_use") setBusy(chat, true, "Running " + e.content_block.name + "…");
         if (e.type === "content_block_delta" && e.delta?.type === "text_delta") {
-          const l = ensureLive(); l._text += e.delta.text; l.querySelector(".md").innerHTML = md(l._text); setBusy(true, "Writing…"); scrollDown();
+          const l = ensureLive(); l._text += e.delta.text; l.querySelector(".md").innerHTML = md(l._text);
+          if (chat.status !== "Writing…") setBusy(chat, true, "Writing…");
+          scrollDown(false, pane);
         }
         break;
       }
       case "assistant":
         if (live) { live.remove(); live = null; }
-        renderMessage("assistant", normalizeBlocks(ev.message?.content)); scrollDown(); break;
+        renderMessage("assistant", normalizeBlocks(ev.message?.content), undefined, pane); scrollDown(false, pane); break;
       case "user": {
         const blocks = normalizeBlocks(ev.message?.content).filter(b => b.type === "tool_result");
-        if (blocks.length) { renderMessage("user", blocks); setBusy(true, "Thinking…"); }
+        if (blocks.length) { renderMessage("user", blocks, undefined, pane); setBusy(chat, true, "Thinking…"); }
         break;
       }
       case "result": {
@@ -1142,39 +1260,127 @@ async function send() {
         line.dataset.tip = `${ev.is_error ? "The reply ended with an error" : "Reply finished"}\nTime: ${secs || "?"}` +
           (ev.total_cost_usd != null ? `\nCost of this reply: $${ev.total_cost_usd.toFixed(4)}` : "") +
           (ev.num_turns ? `\nTurns: ${ev.num_turns} (one per model call, including tool use)` : "");
-        $("msgs").appendChild(line);
+        pane.appendChild(line);
         if (ev.permission_denials?.length) {
           const d = document.createElement("div"); d.className = "meta-line"; d.style.color = "var(--warn)";
           d.dataset.tip = "Denied: " + ev.permission_denials.map(x => x.tool_name).join(", ");
           d.textContent = `${ev.permission_denials.length} tool call(s) were denied by permission mode — switch Mode (e.g. acceptEdits / bypassPermissions) and ask again.`;
-          $("msgs").appendChild(d);
+          pane.appendChild(d);
         }
         break;
       }
       case "ui_error": {
         const d = document.createElement("div"); d.className = "meta-line errbox"; d.textContent = `claude exited (${ev.code}): ${ev.text}`; d.dataset.tip = "The claude process ended with an error. The message above may be incomplete.";
-        $("msgs").appendChild(d); break;
+        pane.appendChild(d); break;
       }
     }
   };
 
+  let delivered = false;
   try {
     const r = await fetch("/api/chat", { method: "POST", headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
-      body: JSON.stringify({ cwd: state.cwd, sessionId: state.session, prompt, permissionMode: $("permMode").value, model: $("model").value, effort: $("effort").value }) });
+      body: JSON.stringify({ cwd: state.cwd, sessionId: state.session, prompt: fullPrompt, permissionMode: $("permMode").value, model: $("model").value, effort: $("effort").value }) });
     if (!r.ok) throw new Error((await r.json()).error);
-    const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
-    for (;;) {
-      const { value, done } = await reader.read(); if (done) break;
-      buf += dec.decode(value, { stream: true });
-      let i; while ((i = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); if (line.trim()) try { handle(JSON.parse(line)); } catch (e) { console.warn(e, line); } }
-    }
+    await readNdjson(r, ev => { if (ev.type === "system") delivered = true; handle(ev); });
   } catch (e) {
-    const d = document.createElement("div"); d.className = "meta-line errbox"; d.textContent = e.message; $("msgs").appendChild(d);
+    if (!delivered && sentCtx.length) { chat.shellCtx = sentCtx.concat(chat.shellCtx); if (state.chat === chat) renderShellCtx(); }  // Claude never got them: keep for next time
+    const d = document.createElement("div"); d.className = "meta-line errbox"; d.textContent = e.message; pane.appendChild(d);
   }
   if (live) live.classList.remove("live");
-  state.run = null; setBusy(false); scrollDown();
-  refreshAfterRun();
+  chat.run = null; setBusy(chat, false); scrollDown(false, pane);
+  finishedInBackground(chat, "Claude replied");
+  refreshAfterRun(chat);
 }
+/* a chat finished while you were looking at another one: mark it, tell you, free it unless it has pending shell results */
+function finishedInBackground(chat, what) {
+  if (state.chat === chat) return;
+  if (chat.session) state.unseen.add(chat.session);
+  toast(`${what} in “${chat.title}”`);
+  if (!keepChat(chat)) dropChat(chat);
+  renderSessions();
+}
+async function readNdjson(response, handle) {
+  const reader = response.body.getReader(), dec = new TextDecoder(); let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i; while ((i = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, i); buf = buf.slice(i + 1);
+      if (line.trim()) try { handle(JSON.parse(line)); } catch (e) { console.warn(e, line); }
+    }
+  }
+}
+
+/* ---------- shell mode: "!command" runs in bash in the chat's folder (not through Claude) ---------- */
+state.shellCtx = [];  // results waiting to be sent to Claude with your next message
+const CTX_LIMIT = 30000;  // characters of output per command passed on to Claude
+function syncShellMode() {
+  const on = $("prompt").value.startsWith("!");
+  $("prompt").classList.toggle("shell", on);
+  $("sendBtn").textContent = on ? "Run" : "Send";
+  $("sendBtn").dataset.tip = on ? `Run this command in bash in ${state.shellCwd || state.cwd || "the chat folder"} (Enter)\n\`cd\` carries over to the next command, like a terminal.` : "Send message (Enter)";
+  if (!state.busy) $("status").textContent = on ? `Shell mode — runs in bash in ${tilde(state.shellCwd || state.cwd)}` : "";
+}
+$("prompt").addEventListener("input", syncShellMode);
+function renderShellCtx() {
+  const c = state.shellCtx, el = $("shellCtx");
+  el.hidden = !c.length;
+  if (!c.length) return;
+  el.innerHTML = `<span data-tip="Like in the terminal app, commands you run with ! and their output are sent to Claude together with your next message, so Claude knows what you did.">📎 ${c.length} shell result${c.length === 1 ? "" : "s"} will be sent with your next message:</span>` +
+    c.map(r => `<code data-tip="${tipAttr(r.cmd)}">$ ${esc(r.cmd)}</code>`).join("") +
+    `<button class="ghost" style="font-size:12px" onclick="state.shellCtx=[];renderShellCtx()" data-tip="Don't send these results to Claude">✕ don't send</button>`;
+}
+async function runShell(cmd) {
+  const chat = state.chat; if (!cmd || !chat) return;
+  const pane = chat.pane, where = chat.shellCwd || chat.cwd;
+  const wrap = document.createElement("div"); wrap.className = "msg user";
+  wrap.innerHTML = `<div class="role" data-tip="${tipAttr(`Ran ${new Date().toLocaleString()}\nin ${where}`)}">You · shell</div>`;
+  const box = termEl({ kind: "bash", cmd, cwd: where }); wrap.appendChild(box);
+  const foot = document.createElement("div"); foot.className = "exit"; foot.innerHTML = '<span class="spinner"></span> running…';
+  box.appendChild(foot); pane.appendChild(wrap); scrollDown(true, pane);
+  setBusy(chat, true, "Running command…");
+  const res = { cmd, out: "", err: "" };
+  let pre = null;
+  const append = (stream, text) => {
+    text = stripAnsi(text);
+    res[stream === "stderr" ? "err" : "out"] += text;
+    const cls = stream === "stderr" ? "out err" : "out";
+    if (!pre || pre.className !== cls) {
+      pre = document.createElement("pre"); pre.className = cls; pre.dataset.tip = stream === "stderr" ? "Error output (stderr)" : "Command output";
+      box.insertBefore(pre, foot);
+    }
+    pre.textContent += text; scrollDown(false, pane);
+  };
+  let exit = null;
+  try {
+    const r = await fetch("/api/shell", { method: "POST", headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: where, cmd }) });
+    if (!r.ok) throw new Error((await r.json()).error);
+    await readNdjson(r, ev => {
+      if (ev.type === "ui_run") chat.run = ev.run;
+      else if (ev.type === "shell_out") append(ev.stream, ev.text);
+      else if (ev.type === "shell_exit") exit = ev;
+    });
+  } catch (e) { append("stderr", e.message + "\n"); }
+  const secs = exit ? ` · ${exit.seconds}s` : "";
+  if (!exit) { foot.className = "exit bad"; foot.textContent = "✗ failed to run"; }
+  else if (exit.code === 0) { foot.className = "exit ok"; foot.textContent = "✓ exit 0" + secs; }
+  else if (exit.code < 0) { foot.className = "exit bad"; foot.textContent = "■ stopped" + secs; }
+  else { foot.className = "exit bad"; foot.textContent = `✗ exit ${exit.code}` + secs; }
+  foot.dataset.tip = exit ? (exit.code === 0 ? "The command succeeded" : exit.code < 0 ? "You stopped the command" : `The command failed with exit code ${exit.code}`) : "The command could not be started";
+  if (!res.out.trim() && !res.err.trim() && exit) { const pre = document.createElement("pre"); pre.className = "out"; pre.textContent = "(no output)"; box.insertBefore(pre, foot); }
+  if (exit?.cwd) chat.shellCwd = exit.cwd;  // `cd` carries over, like a terminal
+  if (exit) {  // keep for Claude's context, like the terminal's ! mode
+    const cut = t => t.length > CTX_LIMIT ? t.slice(0, CTX_LIMIT) + "\n… (truncated)" : t;
+    const q = d => `'${d.replace(/'/g, "'\\''")}'`;
+    // tell Claude where it ran when that isn't the chat's own folder
+    chat.shellCtx.push({ cmd: where === chat.cwd ? cmd : `cd ${q(where)} && ${cmd}`, out: cut(res.out), err: cut(res.err) + (exit.code > 0 ? `\n(exit code ${exit.code})` : exit.code < 0 ? "\n(stopped by the user before it finished)" : "") });
+    if (state.chat === chat) renderShellCtx();
+  }
+  chat.run = null; setBusy(chat, false); scrollDown(false, pane);
+  if (state.chat === chat) $("prompt").focus(); else finishedInBackground(chat, "Command finished");
+}
+
 function normalizeBlocks(content) {
   if (typeof content === "string") return [{ type: "text", text: content }];
   return (content || []).map(b => {
@@ -1186,11 +1392,13 @@ function normalizeBlocks(content) {
     return b;
   }).filter(b => b.type !== "thinking" || b.text);
 }
-async function refreshAfterRun() {
+async function refreshAfterRun(chat) {
   await loadProjects();
-  const p = state.projects.find(x => x.cwd === state.cwd);
-  if (p) { if (state.project?.key !== p.key) await selectProject(p.key, true); else { state.sessions = await api("/api/sessions?project=" + encodeURIComponent(p.key)); renderSessions(); } }
-  const s = state.sessions.find(x => x.id === state.session); if (s) $("chatTitle").textContent = s.title;
+  const p = state.projects.find(x => x.cwd === chat.cwd);
+  if (state.chat === chat && p && state.project?.key !== p.key) await selectProject(p.key, true);
+  else if (state.project) { state.sessions = await api("/api/sessions?project=" + encodeURIComponent(state.project.key)); renderSessions(); }
+  const s = state.sessions.find(x => x.id === chat.session);
+  if (s) { chat.title = s.title; if (state.chat === chat) $("chatTitle").textContent = s.title; renderRuns(); }
 }
 async function stopRun() { if (state.run) { await api("/api/stop", { run: state.run }); toast("Stopped"); } }
 async function openShell(cwd) {

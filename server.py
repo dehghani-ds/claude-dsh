@@ -8,6 +8,9 @@ per-run token that is embedded into the served page.
 import argparse
 import json
 import os
+import queue
+import select
+import signal
 import re
 import secrets
 import shutil
@@ -236,7 +239,8 @@ def session_meta(path: Path):
                 meta["cost"] = o.get("totalCostUSD")
             elif t in ("user", "assistant") and not o.get("isSidechain"):
                 last_msg = o.get("timestamp") or last_msg
-                meta["cwd"] = meta["cwd"] or o.get("cwd")
+                meta["cwd"] = meta["cwd"] or o.get("cwd")  # where the session started (its project)
+                meta["lastCwd"] = o.get("cwd") or meta.get("lastCwd")  # where it was last working
                 meta["gitBranch"] = o.get("gitBranch") or meta["gitBranch"]
                 if t == "user" and not o.get("isMeta"):
                     txt = _text_of((o.get("message") or {}).get("content"))
@@ -351,7 +355,13 @@ def read_transcript(session_id):
             if blocks:
                 msgs.append({"role": o["type"], "ts": o.get("timestamp"), "blocks": blocks,
                              "model": m.get("model")})
-    return {"meta": session_meta(f), "messages": msgs}
+    meta = dict(session_meta(f))
+    # `!` commands start where the session left off (it may have moved into a subfolder or out of a
+    # worktree); fall back to where it started if that folder is gone.
+    meta["shellCwd"] = next((d for d in (meta.get("lastCwd"), meta["cwd"]) if d and os.path.isdir(d)), meta["cwd"])
+    if meta["cwd"] and not os.path.isdir(meta["cwd"]):  # e.g. started in a worktree that was removed since
+        meta["startCwd"], meta["cwd"] = meta["cwd"], meta["shellCwd"]
+    return {"meta": meta, "messages": msgs}
 
 
 # ---------------------------------------------------------------- git / fs
@@ -766,6 +776,17 @@ def notice_analyze(nid):
     return {"analysis": text}
 
 
+def kill_run(p):
+    """Stop a chat or shell run; shell runs have their own process group, so kill all of it."""
+    try:
+        if os.getpgid(p.pid) == p.pid:
+            os.killpg(p.pid, signal.SIGTERM)
+        else:
+            p.terminate()
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 # ---------------------------------------------------------------- HTTP
 
 class Handler(BaseHTTPRequestHandler):
@@ -834,11 +855,13 @@ class Handler(BaseHTTPRequestHandler):
             b = self._body()
             if u.path == "/api/chat":
                 return self._chat(b)
+            if u.path == "/api/shell":
+                return self._shell(b)
             if u.path == "/api/stop":
                 with RUNS_LOCK:
                     p = RUNS.get(b.get("run"))
                 if p:
-                    p.terminate()
+                    kill_run(p)
                 return self._send(200, {"ok": bool(p)})
             if u.path == "/api/worktree":
                 return self._send(200, create_worktree(b["cwd"], b["name"], b.get("branch"),
@@ -868,6 +891,77 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "not found"})
         except (ValueError, KeyError, RuntimeError, OSError, sqlite3.Error) as e:
             self._send(400, {"error": str(e)})
+
+    def _stream_start(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.end_headers()
+
+        def emit(obj):
+            data = (json.dumps(obj) + "\n").encode()
+            self.wfile.write(f"{len(data):x}\r\n".encode() + data + b"\r\n")
+            self.wfile.flush()
+        return emit
+
+    def _shell(self, b):
+        """`!command` from the chat box: run it in bash in the chat's folder, like Claude Code's
+        shell mode, and stream stdout/stderr. No terminal is attached, so interactive programs
+        (sudo password prompts, vim, less) can't be used."""
+        cwd, command = b["cwd"], b.get("cmd", "")
+        if not os.path.isdir(cwd):
+            raise ValueError(f"directory does not exist: {cwd}")
+        if not command.strip():
+            raise ValueError("empty command")
+        env = {**os.environ, "TERM": "dumb", "NO_COLOR": "1", "PAGER": "cat", "GIT_PAGER": "cat"}
+        # report the folder the command ended in, so `cd` carries over to the next command like a real shell
+        cwd_r, cwd_w = os.pipe()
+        script = f"trap 'pwd >&{cwd_w}' EXIT\n{command}"
+        p = subprocess.Popen(["bash", "-c", script], cwd=cwd, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, pass_fds=(cwd_w,),
+                             start_new_session=True)  # own process group, so Stop kills children too
+        os.close(cwd_w)
+        run_id = uuid.uuid4().hex
+        with RUNS_LOCK:
+            RUNS[run_id] = p
+        q = queue.Queue()
+
+        def pump(stream, name):
+            for chunk in iter(lambda: stream.read1(8192), b""):
+                q.put((name, chunk.decode("utf-8", "replace")))
+            q.put((name, None))
+
+        for s, n in ((p.stdout, "stdout"), (p.stderr, "stderr")):
+            threading.Thread(target=pump, args=(s, n), daemon=True).start()
+        emit = self._stream_start()
+        started, sent, cap, open_streams = time.time(), 0, 200_000, 2
+        try:
+            emit({"type": "ui_run", "run": run_id})
+            while open_streams:
+                name, text = q.get()
+                if text is None:
+                    open_streams -= 1
+                elif sent < cap:
+                    text = text[:cap - sent]
+                    sent += len(text)
+                    emit({"type": "shell_out", "stream": name, "text": text})
+                    if sent >= cap:
+                        emit({"type": "shell_out", "stream": "stderr", "text": "\n… output truncated (200 KB shown)\n"})
+            code = p.wait()
+            end_cwd = cwd
+            if select.select([cwd_r], [], [], 0.3)[0]:  # a background job may still hold the pipe: don't block
+                end_cwd = os.read(cwd_r, 4096).decode("utf-8", "replace").strip() or cwd
+            emit({"type": "shell_exit", "code": code, "seconds": round(time.time() - started, 2),
+                  "cwd": end_cwd if os.path.isdir(end_cwd) else cwd})
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            kill_run(p)
+        finally:
+            os.close(cwd_r)
+            with RUNS_LOCK:
+                RUNS.pop(run_id, None)
 
     def _chat(self, b):
         cwd = b["cwd"]
