@@ -166,6 +166,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .group.drop .group-head{background:var(--accent-weak);color:var(--accent)}
 .item{position:relative}
 .item .edit{position:absolute;right:8px;top:7px;opacity:0}
+.item .edit.shell{right:44px}
 .item:hover .edit,.item:focus-within .edit{opacity:1}
 @media (hover:none){.item .edit{opacity:1}}
 .item.dragging{opacity:.4}
@@ -301,6 +302,7 @@ Drag folders onto it, or set it with 🏷" onclick="newGroup()">＋ Group</butto
       <div class="chips" id="projChips"></div>
     </div>
     <button class="ghost" id="projEditBtn" hidden data-tip="Edit this folder's group and tags" aria-label="Edit group and tags" onclick="openFolderDlg(state.project.cwd)">🏷</button>
+    <button class="ghost" id="projShellBtn" hidden data-tip="Open a terminal window in this project folder" aria-label="Open shell here" onclick="openShell(state.project.cwd)">&gt;_</button>
     <button class="primary" id="newChatBtn" data-tip="Start a new Claude chat in this project folder" disabled onclick="newChat(state.project.cwd)">New chat</button>
   </div>
   <section class="wt" id="wtSection" hidden>
@@ -324,6 +326,7 @@ Work on several things in parallel without switching branches.">Git worktrees</s
     </div>
     <button class="ghost" id="copyBtn" data-tip="Copy a command that continues this exact chat in your terminal:
 cd <folder> && claude --resume <id>" onclick="copyResume()" hidden>⧉ Terminal cmd</button>
+    <button class="ghost" id="chatShellBtn" data-tip="Open a terminal window in this chat's working folder" aria-label="Open shell here" onclick="openShell(state.cwd)" hidden>&gt;_</button>
   </div>
   <div class="news-banner" id="newsBanner" hidden>
     <span>🔔</span><span id="newsBannerText"></span><span class="sp"></span>
@@ -382,6 +385,7 @@ Since Claude Code 2.1.280 this is respected in -p mode for every model.">Effort
   <div class="dlg-list" id="browseList"></div>
   <div class="dlg-foot">
     <button onclick="browseDlg.close()" data-tip="Close without starting a chat">Cancel</button>
+    <button onclick="openShell(browseState.path)" data-tip="Open a terminal window in the folder shown above">&gt;_ Open shell</button>
     <button class="primary" onclick="browseDlg.close();newChat(browseState.path)" data-tip="Start a new Claude chat in the folder shown above">Start chat here</button>
   </div>
 </dialog>
@@ -584,6 +588,7 @@ async function reloadMeta() {
 const folderOf = cwd => state.meta.folders[cwd] || { group: null, tags: [] };
 const tagById = id => state.meta.tags.find(t => t.id === id);
 const tagUses = id => Object.values(state.meta.folders).filter(f => f.tags.includes(id)).length;
+const SHELL_TIP = "Open a terminal window in this folder";
 const WT_BADGE_TIP = "This folder is a git worktree created by Claude Code (inside .claude/worktrees/)";
 const MISSING_TIP = "This folder no longer exists on disk (deleted, moved or renamed).\nOld chats can still be read, but new chats can't run here.";
 const chip = (t, extra = "", tip = `Tag: ${t.name}`) => `<span class="chip" style="--cc:var(--c-${t.color})" data-tip="${tipAttr(tip)}" ${extra}>${esc(t.name)}</span>`;
@@ -612,6 +617,7 @@ function projectItem(p) {
   return `<div class="item ${state.project?.key === p.key ? "active" : ""}" draggable="true" data-cwd="${esc(p.cwd)}" data-tip="${tipAttr(tip)}"
       onclick="selectProject('${esc(p.key)}')" ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')">
     <button class="ghost edit" data-tip="Set group and tags for this folder" aria-label="Edit group and tags" onclick='event.stopPropagation();openFolderDlg(${JSON.stringify(p.cwd)})'>🏷</button>
+    ${p.exists ? `<button class="ghost edit shell" data-tip="${SHELL_TIP}" aria-label="Open shell here" onclick='event.stopPropagation();openShell(${JSON.stringify(p.cwd)})'>&gt;_</button>` : ""}
     <div class="t">${esc(name)}${p.isWorktree ? `<span class="badge wt" data-tip="${WT_BADGE_TIP}">worktree</span>` : ""}${p.exists ? "" : `<span class="badge gone" data-tip="${MISSING_TIP}">missing</span>`}</div>
     <div class="s">${esc(tilde(p.cwd))}</div>
     <div class="s">${p.sessions} session${p.sessions === 1 ? "" : "s"} · ${ago(p.mtime)}</div>
@@ -765,6 +771,7 @@ async function selectProject(key, keepView) {
   $("projTitle").dataset.tip = state.project.cwd + (state.project.exists ? "" : "\n⚠ This folder no longer exists");
   $("newChatBtn").dataset.tip = state.project.exists ? "Start a new Claude chat in this project folder" : "Folder no longer exists — can't start a chat here";
   $("newChatBtn").disabled = !state.project.exists;
+  $("projShellBtn").hidden = !state.project.exists;
   $("sessions").innerHTML = '<div class="empty"><span class="spinner"></span></div>';
   if (!keepView) setView("mid");
   loadRepo(state.project.cwd);
@@ -798,6 +805,7 @@ async function loadRepo(cwd) {
         <div><b data-tip="${tipAttr(w.branch ? `Branch checked out here: ${w.branch} (commit ${w.head})` : `Detached HEAD at commit ${w.head} — not on any branch`)}">${esc(w.branch || (w.detached ? "detached @" + w.head : w.head))}</b>${i === 0 ? '<span class="badge" data-tip="The main working tree (the original clone). It can\'t be removed here.">main</span>' : ""}${w.dirty ? '<span class="badge dirty" data-tip="Has uncommitted or untracked changes.\nRemoving this worktree would lose them.">changes</span>' : ""}${w.path === state.project.cwd ? '<span class="badge wt" data-tip="This is the folder of the project you selected">here</span>' : ""}</div>
         <div class="s" style="color:var(--muted);font-size:12px" data-tip="${tipAttr(w.path)}">${esc(tilde(w.path))}</div></div>
       ${proj && proj.key !== state.project.key ? `<button class="ghost" data-tip="Show the chats that were run in this worktree" aria-label="Show sessions" onclick="selectProject('${esc(proj.key)}')">☰</button>` : ""}
+      <button class="ghost" data-tip="Open a terminal window in this worktree" aria-label="Open shell here" onclick='openShell(${JSON.stringify(w.path)})'>&gt;_</button>
       <button class="ghost" data-tip="Start a new Claude chat in this worktree" aria-label="New chat here" onclick='newChat(${JSON.stringify(w.path)})'>💬</button>
       ${i > 0 ? `<button class="ghost" data-tip="${w.dirty ? "Remove this worktree folder — ⚠ its uncommitted changes will be lost (you'll be asked first)" : "Remove this worktree folder (the branch is kept). You'll be asked first."}" aria-label="Remove worktree" onclick='removeWorktree(${JSON.stringify(w.path)}, ${w.dirty})'>✕</button>` : ""}
     </div>`;
@@ -897,7 +905,7 @@ function setChatHeader(title, cwd, id) {
   $("chatTitle").textContent = title; $("chatSub").textContent = tilde(cwd) + (id ? "  ·  " + id : "  ·  new session");
   $("chatTitle").dataset.tip = title;
   $("chatSub").dataset.tip = `Working folder: ${cwd}\n` + (id ? `Session ID: ${id}` : "New session — an ID is assigned when you send the first message");
-  $("copyBtn").hidden = !id; $("prompt").disabled = false; $("sendBtn").disabled = false;
+  $("copyBtn").hidden = !id; $("chatShellBtn").hidden = false; $("prompt").disabled = false; $("sendBtn").disabled = false;
 }
 function newChat(cwd) {
   if (state.busy) return toast("Wait for the current reply to finish");
@@ -1185,6 +1193,9 @@ async function refreshAfterRun() {
   const s = state.sessions.find(x => x.id === state.session); if (s) $("chatTitle").textContent = s.title;
 }
 async function stopRun() { if (state.run) { await api("/api/stop", { run: state.run }); toast("Stopped"); } }
+async function openShell(cwd) {
+  try { const r = await api("/api/shell", { cwd }); toast(`Opened ${r.terminal} in ${tilde(cwd)}`); } catch (e) { toast(e.message); }
+}
 function copyResume() {
   const cmd = `cd '${state.cwd.replace(/'/g, "'\\''")}' && claude --resume ${state.session}`;
   navigator.clipboard.writeText(cmd).then(() => toast("Copied: " + cmd), () => prompt("Copy:", cmd));
