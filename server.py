@@ -39,6 +39,8 @@ DB_PATH = Path(os.environ.get("WORKBENCH_DB") or HERE / "workbench.db")
 COLORS = ("slate", "red", "orange", "amber", "green", "teal", "blue", "violet", "pink")
 
 RUNS = {}  # run_id -> Popen
+CHAT_RUNS = {}  # run_id -> ChatRun: Claude replies keep going (and are buffered) when the page goes away
+RUN_KEEP = 15 * 60  # seconds a finished run's events stay available for a page to catch up
 STARTED = time.time()
 RUNS_LOCK = threading.Lock()
 _meta_cache = {}  # path -> (mtime, size, meta)
@@ -1019,6 +1021,59 @@ def notice_analyze(nid):
     return {"analysis": text}
 
 
+class ChatRun:
+    """One `claude -p` reply. A background thread reads its output into `events`; any number of page
+    connections can follow it (from any point), and it keeps running if they all disconnect."""
+
+    def __init__(self, proc, cwd, session_id, prompt):
+        self.id, self.proc, self.cwd, self.session_id = uuid.uuid4().hex, proc, cwd, session_id
+        self.prompt, self.started, self.ended, self.done = prompt[:300], time.time(), None, False
+        self.events, self.cond = [], threading.Condition()
+
+    def add(self, ev):
+        with self.cond:
+            self.events.append(ev)
+            self.cond.notify_all()
+
+    def pump(self):
+        err = []
+        threading.Thread(target=lambda: err.append(self.proc.stderr.read()), daemon=True).start()
+        self.add({"type": "ui_run", "run": self.id})
+        for line in self.proc.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                ev = {"type": "ui_raw", "text": line}
+            if ev.get("type") == "system" and ev.get("subtype") == "init" and ev.get("session_id"):
+                self.session_id = ev["session_id"]
+            self.add(ev)
+        self.proc.wait()
+        time.sleep(0.05)
+        if self.proc.returncode != 0:
+            self.add({"type": "ui_error", "code": self.proc.returncode, "text": "".join(err)[-4000:]})
+        with self.cond:
+            self.done, self.ended = True, time.time()
+            self.cond.notify_all()
+        with RUNS_LOCK:
+            RUNS.pop(self.id, None)
+
+    def info(self):
+        return {"run": self.id, "sessionId": self.session_id, "cwd": self.cwd, "prompt": self.prompt,
+                "started": self.started, "ended": self.ended, "done": self.done, "events": len(self.events)}
+
+
+def list_runs():
+    """Runs still going, plus ones that finished in the last RUN_KEEP seconds (older ones are forgotten)."""
+    now = time.time()
+    with RUNS_LOCK:
+        for rid in [r for r, run in CHAT_RUNS.items() if run.done and now - run.ended > RUN_KEEP]:
+            del CHAT_RUNS[rid]
+        return [run.info() for run in CHAT_RUNS.values()]
+
+
 def server_status():
     """For the ⏻ button: when this process started and whether server.py changed since (restart needed)."""
     code_mtime = os.path.getmtime(__file__)
@@ -1077,12 +1132,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send(self, code, body, ctype="application/json"):
         data = body if isinstance(body, bytes) else json.dumps(body).encode()
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # the page went away (reload/close) before the answer arrived: nothing to do
 
     def _auth(self):
         if not self._host_ok() or not secrets.compare_digest(self.headers.get("X-Token", ""), TOKEN):
@@ -1125,6 +1183,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, notes_list(q.get("sid")))
             if u.path == "/api/notes/counts":
                 return self._send(200, notes_counts())
+            if u.path == "/api/runs":
+                return self._send(200, list_runs())
+            if u.path == "/api/run/stream":
+                run = CHAT_RUNS.get(q.get("run", ""))
+                if not run:
+                    raise ValueError("run not found (finished more than 15 minutes ago?)")
+                return self._follow(run, int(q.get("from", 0)))
             if u.path == "/api/meta":
                 return self._send(200, meta_all())
             if u.path == "/api/notices":
@@ -1277,46 +1342,37 @@ class Handler(BaseHTTPRequestHandler):
             cmd += ["--model", model]
         if b.get("effort") in ("low", "medium", "high", "xhigh", "max"):
             cmd += ["--effort", b["effort"]]
-        run_id = uuid.uuid4().hex
         p = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, text=True, bufsize=1)
-        with RUNS_LOCK:
-            RUNS[run_id] = p
         p.stdin.write(b["prompt"])
         p.stdin.close()
+        run = ChatRun(p, cwd, b.get("sessionId"), b["prompt"])
+        with RUNS_LOCK:
+            RUNS[run.id] = p
+            CHAT_RUNS[run.id] = run
+        threading.Thread(target=run.pump, daemon=True).start()
+        self._follow(run, 0)
 
-        self.send_response(200)
-        self.send_header("Content-Type", "application/x-ndjson")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Transfer-Encoding", "chunked")
-        self.end_headers()
-
-        def emit(obj):
-            data = (json.dumps(obj) + "\n").encode()
-            self.wfile.write(f"{len(data):x}\r\n".encode() + data + b"\r\n")
-            self.wfile.flush()
-
+    def _follow(self, run, start):
+        """Stream a run's events from `start` until it ends. If the page goes away, only this connection
+        ends — Claude keeps working and a reloaded page can follow the run again."""
+        emit = self._stream_start()
+        i = max(0, start)
         try:
-            emit({"type": "ui_run", "run": run_id})
-            for line in p.stdout:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    emit(json.loads(line))
-                except ValueError:
-                    emit({"type": "ui_raw", "text": line})
-            p.wait()
-            err = p.stderr.read()
-            if p.returncode != 0:
-                emit({"type": "ui_error", "code": p.returncode, "text": err[-4000:]})
+            while True:
+                with run.cond:
+                    while i >= len(run.events) and not run.done:
+                        run.cond.wait(timeout=15)
+                    batch, finished = run.events[i:], run.done
+                for ev in batch:
+                    emit(ev)
+                i += len(batch)
+                if finished and i >= len(run.events):
+                    break
             self.wfile.write(b"0\r\n\r\n")
             self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
-            p.terminate()
-        finally:
-            with RUNS_LOCK:
-                RUNS.pop(run_id, None)
+            pass
 
 
 def main():

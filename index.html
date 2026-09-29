@@ -32,7 +32,7 @@
 [hidden]{display:none!important}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;
-  display:grid;grid-template-columns:280px 340px 1fr;height:100vh;overflow:hidden}
+  display:grid;grid-template-columns:var(--left-w,280px) var(--mid-w,340px) minmax(0,1fr);height:100vh;overflow:hidden}
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer;border:1px solid var(--border);background:var(--panel);border-radius:7px;padding:5px 10px}
 button:hover{background:var(--panel2)}
@@ -44,7 +44,15 @@ button.ghost:hover{background:var(--panel2);color:var(--text)}
 button:disabled{opacity:.5;cursor:default}
 input,select,textarea{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:6px 8px;outline:none}
 input:focus,select:focus,textarea:focus{border-color:var(--accent)}
-.col{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border)}
+.col{display:flex;flex-direction:column;min-height:0;min-width:0;border-right:1px solid var(--border);position:relative}
+/* draggable dividers between the columns and on the notes panel (sizes are saved in this browser) */
+.resizer{position:absolute;top:0;bottom:0;width:9px;z-index:9;cursor:col-resize;touch-action:none;outline:none}
+.col>.resizer{right:-5px}
+.notes>.resizer{left:-5px}
+.resizer::after{content:"";position:absolute;top:0;bottom:0;left:4px;width:1px;background:transparent;transition:background .12s,width .12s}
+.resizer:hover::after,.resizer:focus-visible::after,.resizer.active::after{background:var(--accent);width:3px;left:3px}
+body.resizing{cursor:col-resize;user-select:none}
+body.resizing iframe,body.resizing #msgs{pointer-events:none}
 .col-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center}
 .col-head h2{font-size:13px;margin:0;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);flex:1;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -67,6 +75,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 .badge.run .spinner{width:8px;height:8px;border-width:1.5px;margin-right:3px;vertical-align:-1px}
 .badge.new{color:var(--ok);border-color:var(--ok);font-weight:600}
 .t>.badge:first-child{margin:0 6px 0 0}
+#projects .item .t .badge.run{margin:0 6px 0 2px}
 /* chats working in the background */
 .runs{position:relative}
 .runs-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:15;width:340px;max-height:50vh;overflow:auto;background:var(--panel);
@@ -326,10 +335,33 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .scroll>*,#msgs>*,.news-list>*,.dlg-list>*,.dlg-body>*{direction:ltr}
 /* news inbox */
 .bell{position:relative}
+/* ⋯ actions menu for a chat (also on right-click) */
+.more-btn{font-weight:700;letter-spacing:1px}
+#sessions .item{padding-right:36px}
+#sessions .item .more-btn{position:absolute;right:6px;top:6px;opacity:0;padding:1px 7px}
+#sessions .item:hover .more-btn,#sessions .item:focus-within .more-btn,#sessions .item.menu-open .more-btn{opacity:1}
+@media (hover:none){#sessions .item .more-btn{opacity:1}}
+.pchat.menu-open .edit{opacity:1}
+.menu{position:fixed;z-index:40;min-width:230px;max-width:320px;background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  box-shadow:0 10px 30px rgba(0,0,0,.2);padding:5px;font-size:13.5px}
+.menu .mh{padding:6px 10px 7px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);margin-bottom:4px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.menu button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:0;background:transparent;border-radius:7px;padding:7px 10px}
+.menu button:hover,.menu button:focus-visible{background:var(--panel2);outline:none}
+.menu button .mi{width:18px;text-align:center;flex:none;color:var(--muted)}
+.menu button .mk{margin-left:auto;font-size:11px;color:var(--muted)}
+.menu button.danger{color:var(--err)}
+.menu hr{border:0;border-top:1px solid var(--border);margin:4px 2px}
 /* per-chat notes & to-dos drawer */
 #chat{position:relative}
 .notes{position:absolute;right:0;bottom:0;width:min(370px,94%);z-index:6;display:flex;flex-direction:column;background:var(--panel);
   border-left:1px solid var(--border);box-shadow:-8px 0 24px rgba(0,0,0,.12)}
+/* on wide screens the notes are a column of their own: the chat gets narrower instead of being covered */
+@media (min-width:901px){
+  #chat{--notes-w:var(--notes-user-w,clamp(300px,36%,460px))}
+  #chat .notes{width:var(--notes-w);box-shadow:none}
+  #chat.notes-open #msgs,#chat.notes-open .composer,#chat.notes-open .news-banner{margin-right:var(--notes-w)}
+}
 .notes-head{display:flex;align-items:center;gap:6px;padding:10px 12px;border-bottom:1px solid var(--border)}
 .notes-head .sp{flex:1}
 .notes-add{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:6px}
@@ -420,6 +452,7 @@ input.rename{font:inherit;font-weight:600;width:100%;padding:1px 6px;border-colo
 .mobile-nav{display:none}
 @media (max-width:900px){
   body{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .resizer{display:none}
   .mobile-nav{display:flex;gap:6px;padding:8px 16px;border-bottom:1px solid var(--border);background:var(--panel)}
   .mobile-nav button{flex:1}
   .col,#chat{display:none;border-right:0}
@@ -438,6 +471,8 @@ input.rename{font:inherit;font-weight:600;width:100%;padding:1px 6px;border-colo
 
 <!-- Projects -->
 <aside class="col" id="left">
+  <div class="resizer" id="leftResizer" role="separator" aria-orientation="vertical" aria-label="Resize the folder sidebar" tabindex="0"
+    data-tip="Drag to resize the folder sidebar · double-click to reset · or focus and use ← →"></div>
   <div class="col-head">
     <div class="brand" data-tip="Local web UI for your Claude Code sessions.
 Reads ~/.claude/projects directly; groups &amp; tags are stored in workbench.db."><span>✳</span> Claude Workbench</div>
@@ -485,6 +520,8 @@ Drag folders onto it, or set it with 🏷" onclick="newGroup()">＋ Group</butto
 
 <!-- Sessions + worktrees -->
 <div class="col" id="mid">
+  <div class="resizer" id="midResizer" role="separator" aria-orientation="vertical" aria-label="Resize the chat list" tabindex="0"
+    data-tip="Drag to resize the chat list · double-click to reset · or focus and use ← →"></div>
   <div class="col-head">
     <div style="flex:1;min-width:0">
       <h2 id="projTitle" data-tip="Select a project on the left">Select a project</h2>
@@ -529,6 +566,8 @@ cd <folder> && claude --resume <id>" onclick="copyResume()" hidden>⧉ Terminal 
     <button class="ghost" onclick="dismissBanner()" data-tip="Hide this banner until something new arrives (items stay unread in 🔔)" aria-label="Dismiss">✕</button>
   </div>
   <aside class="notes" id="notesPanel" hidden>
+    <div class="resizer" id="notesResizer" role="separator" aria-orientation="vertical" aria-label="Resize the notes panel" tabindex="0"
+      data-tip="Drag to resize the notes · double-click to reset · or focus and use ← →"></div>
     <div class="notes-head">
       <b data-tip="Saved with this chat in workbench.db — still here after a reload or a reboot">📝 Notes &amp; to-dos</b><span class="sp"></span>
       <button id="queueBtn" hidden onclick="startQueue()"></button>
@@ -981,12 +1020,12 @@ function treeChat(key, c, loose) {
   const J = v => JSON.stringify(v).replace(/'/g, "&#39;");
   const folder = loose ? (c.cwd ? tilde(c.cwd) : "") : "";
   const tip = `${c.title}\n${c.mtime ? "Last active " + new Date(c.mtime * 1000).toLocaleString() : ""}` + (c.cwd ? `\nFolder: ${c.cwd}` : "") +
-    `\nClick to open · double-click to rename${loose ? "" : " · drag onto a group to add it there"}`;
+    `\nClick to open · double-click to rename · ⋯ or right-click for more${loose ? "" : " · drag onto a group to add it there"}`;
   return `<div class="pchat ${loose ? "loose" : ""} ${state.session === c.id ? "active" : ""}" draggable="true" data-sid="${esc(c.id)}"
-      onclick='sessionClick(event, ${J(c.id)}, ${J(key)})' ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')" data-tip="${tipAttr(tip)}">
+      onclick='sessionClick(event, ${J(c.id)}, ${J(key)})' oncontextmenu='sessionMenu(event, ${J(c.id)}, ${J(key)})' ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')" data-tip="${tipAttr(tip)}">
     <div class="prow"><span class="pt">${ICON_CHAT}${chatBadge(c.id)}${noteBadge(c.id)}<span class="ttl">${esc(c.title || "(untitled)")}</span></span>
       <span class="pa">${c.mtime ? ago(c.mtime) : ""}</span>
-      <button class="ghost edit" data-tip="Set group and tags for this chat" aria-label="Edit chat group and tags" onclick='event.stopPropagation();openChatDlg(${J(c.id)}, ${J(c.title || "")})'>🏷</button></div>
+      <button class="ghost edit more-btn" aria-label="More actions" aria-haspopup="menu" data-tip="More: rename, group &amp; tags, notes, copy resume command… (or right-click the chat)" onclick='sessionMenu(event, ${J(c.id)}, ${J(key)})'>⋯</button></div>
     ${folder ? `<div class="ps">${esc(folder)}</div>` : ""}
     ${chatChips(c.id, loose ? false : chatOf(c.id).group !== folderOf(c.cwd || "").group)}
   </div>`;
@@ -1223,12 +1262,13 @@ function sessionItem(s) {
   {
     const tip = `${s.title}\nSession ${s.id}\nLast active ${new Date(s.mtime * 1000).toLocaleString()} · ${s.messages} messages` +
       (s.gitBranch && s.gitBranch !== "HEAD" ? `\nGit branch: ${s.gitBranch}` : "") + (s.cost ? `\nCost so far: $${s.cost.toFixed(4)}` : "") +
-      (s.firstPrompt ? `\n\nFirst prompt: ${s.firstPrompt.slice(0, 160)}` : "") + "\n\nClick to open and continue · double-click to rename";
+      (s.firstPrompt ? `\n\nFirst prompt: ${s.firstPrompt.slice(0, 160)}` : "") + "\n\nClick to open · double-click to rename · ⋯ or right-click for more";
     const c = state.chats.get(s.id);
     const badge = c?.busy ? `<span class="badge run" data-tip="${tipAttr(`Claude is working on this chat (${c.status || "working"}).\nOpen it any time — it keeps running either way.`)}"><span class="spinner"></span>working</span>`
       : state.unseen.has(s.id) ? `<span class="badge new" data-tip="Finished while you were in another chat">● new</span>` : "";
-    return `<div class="item ${state.session === s.id ? "active" : ""}" onclick="sessionClick(event, '${s.id}')" data-tip="${tipAttr(tip)}">
-      <div class="t">${ICON_CHAT}${badge}${noteBadge(s.id)}<span class="ttl">${esc(s.title)}</span><button class="ghost edit chat-edit" data-tip="Set group and tags for this chat" aria-label="Edit chat group and tags" onclick='event.stopPropagation();openChatDlg(${JSON.stringify(s.id)}, ${JSON.stringify(s.title).replace(/'/g, "&#39;")})'>🏷</button></div>
+    return `<div class="item ${state.session === s.id ? "active" : ""}" data-sid="${s.id}" onclick="sessionClick(event, '${s.id}')" oncontextmenu="sessionMenu(event, '${s.id}')" data-tip="${tipAttr(tip)}">
+      <div class="t">${ICON_CHAT}${badge}${noteBadge(s.id)}<span class="ttl">${esc(s.title)}</span></div>
+      <button class="ghost more-btn" aria-label="More actions" aria-haspopup="menu" data-tip="More: rename, group &amp; tags, notes, copy resume command… (or right-click the chat)" onclick="sessionMenu(event, '${s.id}')">⋯</button>
       ${chatChips(s.id, true)}
       <div class="s">${ago(s.mtime)} · ${s.messages} msgs${s.gitBranch && s.gitBranch !== "HEAD" ? " · ⎇ " + esc(s.gitBranch) : ""}${s.cost ? " · $" + s.cost.toFixed(2) : ""}</div>
       ${s.lastPrompt ? `<div class="s">↳ ${esc(s.lastPrompt)}</div>` : ""}</div>`;
@@ -1818,14 +1858,30 @@ async function sendPrompt(chat, prompt) {
     .concat(prompt).join("\n\n");
   renderMessage("user", [{ type: "text", text: prompt }], undefined, pane); scrollDown(true, pane);
   setBusy(chat, true, "Starting Claude…");
-
+  const st = streamInto(chat, 0);
+  let delivered = false;
+  const draw = st.handle; st.handle = ev => { if (ev.type === "system") delivered = true; draw(ev); };
+  try {
+    const r = await fetch("/api/chat", { method: "POST", headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: chat.cwd, sessionId: chat.session, prompt: fullPrompt, permissionMode: $("permMode").value, model: $("model").value, effort: $("effort").value }) });
+    if (!r.ok) throw new Error((await r.json()).error);
+    await followStream(chat, st, r);
+  } catch (e) {
+    if (!delivered && sentCtx.length) { chat.shellCtx = sentCtx.concat(chat.shellCtx); if (state.chat === chat) renderShellCtx(); }  // Claude never got them: keep for next time
+    const d = document.createElement("div"); d.className = "meta-line errbox"; d.textContent = e.message; pane.appendChild(d);
+  }
+  return endRun(chat, st);
+}
+/* draws a run's events into its chat — for a new reply, and when reconnecting after a reload (from = events already seen) */
+function streamInto(chat, from) {
+  const pane = chat.pane, st = { ok: false, ended: false, seen: from };
   let live = null; // live streaming element for the in-progress assistant message
-  let resultOk = false;
   const ensureLive = () => {
     if (!live) { live = document.createElement("div"); live.className = "msg assistant live"; live.innerHTML = '<div class="role">Claude</div><div class="md"></div>'; live._text = ""; pane.appendChild(live); }
     return live;
   };
-  const handle = ev => {
+  st.handle = ev => {
+    st.seen++;
     switch (ev.type) {
       case "ui_run": chat.run = ev.run; break;
       case "system":
@@ -1854,7 +1910,7 @@ async function sendPrompt(chat, prompt) {
         break;
       }
       case "result": {
-        resultOk = !ev.is_error;
+        st.ok = !ev.is_error; st.ended = true;
         const secs = ev.duration_ms ? (ev.duration_ms / 1000).toFixed(1) + "s" : "";
         const cost = ev.total_cost_usd != null ? " · $" + ev.total_cost_usd.toFixed(4) : "";
         const line = document.createElement("div"); line.className = "meta-line";
@@ -1872,28 +1928,76 @@ async function sendPrompt(chat, prompt) {
         break;
       }
       case "ui_error": {
+        st.ended = true;
         const d = document.createElement("div"); d.className = "meta-line errbox"; d.textContent = `claude exited (${ev.code}): ${ev.text}`; d.dataset.tip = "The claude process ended with an error. The message above may be incomplete.";
         pane.appendChild(d); break;
       }
     }
   };
-
-  let delivered = false;
-  try {
-    const r = await fetch("/api/chat", { method: "POST", headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
-      body: JSON.stringify({ cwd: chat.cwd, sessionId: chat.session, prompt: fullPrompt, permissionMode: $("permMode").value, model: $("model").value, effort: $("effort").value }) });
-    if (!r.ok) throw new Error((await r.json()).error);
-    await readNdjson(r, ev => { if (ev.type === "system") delivered = true; handle(ev); });
-  } catch (e) {
-    if (!delivered && sentCtx.length) { chat.shellCtx = sentCtx.concat(chat.shellCtx); if (state.chat === chat) renderShellCtx(); }  // Claude never got them: keep for next time
-    const d = document.createElement("div"); d.className = "meta-line errbox"; d.textContent = e.message; pane.appendChild(d);
+  st.close = () => { if (live) live.classList.remove("live"); };
+  return st;
+}
+/* read a run's stream. Claude keeps working on the server even without a page, so if the connection drops
+   before the run ended, pick it up again where it stopped. */
+async function followStream(chat, st, first) {
+  let r = first;
+  for (let tries = 0; tries < 5; tries++) {
+    if (!r) {
+      r = await fetch(`/api/run/stream?run=${chat.run}&from=${st.seen}`, { headers: { "X-Token": TOKEN } });
+      if (!r.ok) throw new Error((await r.json()).error);
+    }
+    await readNdjson(r, st.handle);
+    if (st.ended || !chat.run) return;
+    r = null; await new Promise(res => setTimeout(res, 800));
   }
-  if (live) live.classList.remove("live");
-  chat.run = null; setBusy(chat, false); scrollDown(false, pane);
+}
+function endRun(chat, st) {
+  st.close();
+  chat.run = null; setBusy(chat, false); scrollDown(false, chat.pane);
   finishedInBackground(chat, "Claude replied");
   refreshAfterRun(chat);
+  if (st.reattached) { reloadPane(chat); settleRunningNotes(chat, st.ok); }  // after reconnecting: redraw from the saved session; finish its to-do
   afterRun(chat);
-  return resultOk;
+  return st.ok;
+}
+/* a to-do was running when the page reloaded; its run kept going — record how it ended */
+async function settleRunningNotes(chat, ok) {
+  if (!chat.session) return;
+  let list; try { list = await api("/api/notes?sid=" + chat.session); } catch { return; }
+  state.notes.set(chat.session, list);
+  for (const n of list.filter(n => n.status === "running")) await setNote(n.id, { status: ok ? "applied" : "failed" });
+}
+async function reloadPane(chat) {
+  if (!chat.session || chat.busy) return;
+  let data; try { data = await api("/api/session?id=" + chat.session); } catch { return; }
+  if (chat.busy) return;
+  chat.title = data.meta.title; chat.pane.innerHTML = "";
+  for (const m of data.messages) renderMessage(m.role, m.blocks, m.ts, chat.pane);
+  if (state.chat === chat) { setChatHeader(chat.title, chat.cwd, chat.session); scrollDown(true, chat.pane); }
+}
+/* after a reload (or opening the page again): reconnect to replies that kept running on the server meanwhile */
+async function resumeRuns() {
+  let runs; try { runs = await api("/api/runs"); } catch { return; }
+  const live = runs.filter(r => !r.done && ![...state.chats.values()].some(c => c.run === r.run));
+  for (const r of live) {
+    const key = r.sessionId || "new-" + (++chatSeq);
+    const chat = state.chats.get(key) || makeChat(key, { session: r.sessionId, cwd: r.cwd, shellCwd: r.cwd, title: "Reconnecting…" });
+    chat.run = r.run;
+    setBusy(chat, true, "Working… (reconnected)");
+    if (r.sessionId) await reloadPaneForced(chat);
+    const fresh = (await api("/api/runs").catch(() => [])).find(x => x.run === r.run);
+    const st = streamInto(chat, fresh ? fresh.events : r.events); st.reattached = true;
+    followStream(chat, st, null)
+      .catch(e => { const d = document.createElement("div"); d.className = "meta-line errbox"; d.textContent = e.message; chat.pane.appendChild(d); })
+      .finally(() => endRun(chat, st));
+  }
+  if (live.length) { renderRuns(); renderSessions(); renderProjects(); toast(`Reconnected to ${live.length} chat${live.length === 1 ? "" : "s"} that kept running — see ⟳ working`); }
+}
+async function reloadPaneForced(chat) {
+  let data; try { data = await api("/api/session?id=" + chat.session); } catch { return; }
+  chat.title = data.meta.title; chat.cwd = data.meta.cwd || chat.cwd; chat.shellCwd = data.meta.shellCwd || chat.cwd;
+  chat.pane.innerHTML = "";
+  for (const m of data.messages) renderMessage(m.role, m.blocks, m.ts, chat.pane);
 }
 /* a chat finished while you were looking at another one: mark it, tell you, free it unless it has pending shell results */
 function finishedInBackground(chat, what) {
@@ -2184,6 +2288,73 @@ loadNews();
 setInterval(loadNews, 5 * 60 * 1000);
 addEventListener("focus", loadNews);
 
+/* ---------- ⋯ actions menu for a chat (button on each chat row, or right-click the row) ---------- */
+let menuEl = null;
+function closeMenu() {
+  if (!menuEl) return;
+  menuEl.remove(); menuEl = null;
+  document.querySelectorAll(".menu-open").forEach(e => e.classList.remove("menu-open"));
+}
+/* items: {icon, label, tip, key, danger, run} or "-" for a divider */
+function openMenu(e, title, items) {
+  closeMenu(); hideTip();
+  const m = document.createElement("div"); m.className = "menu"; m.setAttribute("role", "menu");
+  m.innerHTML = (title ? `<div class="mh" data-tip="${tipAttr(title)}">${esc(title)}</div>` : "") + items.map((it, i) => it === "-" ? "<hr>" :
+    `<button role="menuitem" data-i="${i}" class="${it.danger ? "danger" : ""}" ${it.tip ? `data-tip="${tipAttr(it.tip)}"` : ""}><span class="mi">${it.icon}</span>${esc(it.label)}${it.key ? `<span class="mk">${esc(it.key)}</span>` : ""}</button>`).join("");
+  m.addEventListener("click", ev => { const b = ev.target.closest("button[data-i]"); if (!b) return; ev.stopPropagation(); const it = items[+b.dataset.i]; closeMenu(); it.run(); });
+  m.addEventListener("keydown", ev => {
+    const bs = [...m.querySelectorAll("button")], i = bs.indexOf(document.activeElement);
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") { ev.preventDefault(); bs[(i + (ev.key === "ArrowDown" ? 1 : bs.length - 1)) % bs.length].focus(); }
+    else if ((ev.key === "Enter" || ev.key === " ") && i >= 0) { ev.preventDefault(); bs[i].click(); }
+    else if (ev.key === "Escape") { closeMenu(); }
+  });
+  hostFloating(m); menuEl = m;
+  // place it: under the ⋯ button, or at the mouse for a right-click; keep it on screen
+  const r = e.type === "contextmenu" ? { left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY } : e.currentTarget.getBoundingClientRect();
+  const w = m.offsetWidth, h = m.offsetHeight;
+  let x = e.type === "contextmenu" ? r.left : r.right - w, y = r.bottom + 4;
+  if (y + h > innerHeight - 6) y = Math.max(6, r.top - h - 4);
+  m.style.left = Math.min(Math.max(6, x), innerWidth - w - 6) + "px"; m.style.top = y + "px";
+  m.querySelector("button")?.focus({ preventScroll: true });
+}
+document.addEventListener("mousedown", e => { if (menuEl && !menuEl.contains(e.target)) closeMenu(); }, true);
+addEventListener("resize", closeMenu);
+document.addEventListener("scroll", e => { if (menuEl && !menuEl.contains(e.target)) closeMenu(); }, true);
+
+/* what we know about a chat, wherever it's listed */
+function sessionInfo(sid) {
+  const c = state.chats.get(sid);
+  const s = state.sessions.find(x => x.id === sid) || [...state.projSessions.values()].flatMap(v => v.list).find(x => x.id === sid);
+  const m = state.meta.chats?.[sid];
+  return { id: sid, title: c?.title || s?.title || m?.title || sid, cwd: c?.cwd || s?.cwd || m?.cwd || state.project?.cwd };
+}
+function copyText(text, what) {
+  navigator.clipboard.writeText(text).then(() => toast(`Copied ${what}: ${text}`), () => prompt(`Copy ${what}:`, text));
+}
+function sessionMenu(e, sid, key) {
+  e.preventDefault(); e.stopPropagation();
+  const info = sessionInfo(sid), row = e.currentTarget.closest(".item, .pchat");
+  row?.classList.add("menu-open");
+  const where = row?.closest("#sessions") ? "#sessions" : "#projects";  // rename in the list the menu was opened from
+  const chat = state.chats.get(sid), q = d => `'${(d || "").replace(/'/g, "'\\''")}'`;
+  const open = () => key !== undefined ? openChatFromTree(key, sid) : openSession(sid);
+  openMenu(e, info.title, [
+    { icon: "▶", label: "Open", tip: "Open this chat", run: open },
+    { icon: "✎", label: "Rename…", key: "double-click", tip: "Give this chat a new name (same as /rename in the terminal)",
+      run: () => startRename(document.querySelector(`${where} [data-sid="${sid}"] .ttl`), sid) },
+    { icon: "🏷", label: "Group & tags…", tip: "Put this chat in a group and tag it", run: () => openChatDlg(sid, info.title) },
+    { icon: "📝", label: "Notes & to-dos", tip: "Open the chat with its notes and to-dos panel",
+      run: async () => { await open(); toggleNotes(true); } },
+    "-",
+    { icon: "⧉", label: "Copy resume command", tip: `cd ${info.cwd} && claude --resume ${sid}\nPaste it in a terminal to continue this chat there`,
+      run: () => copyText(`cd ${q(info.cwd)} && claude --resume ${sid}`, "resume command") },
+    { icon: ">_", label: "Open terminal in its folder", tip: info.cwd, run: () => openShell(info.cwd) },
+    { icon: "#", label: "Copy session ID", tip: sid, run: () => copyText(sid, "session ID") },
+    ...(chat?.busy ? ["-", { icon: "■", label: "Stop the running reply", danger: true, tip: "Stop what Claude is doing in this chat",
+      run: async () => { if (chat.run) { await api("/api/stop", { run: chat.run }); toast("Stopped"); } } }] : []),
+  ]);
+}
+
 /* ---------- per-chat notes & to-dos, saved in workbench.db; ▶ runs one as a prompt, ⏭ queues it ---------- */
 state.notes = new Map();      // session id -> [note]
 state.noteCounts = {};        // session id -> {todo, notes, queued}
@@ -2208,7 +2379,7 @@ function renderNotesBtn() {
 }
 function toggleNotes(force) {
   const open = force ?? !notesOpen();
-  $("notesPanel").hidden = !open; store.set("notesOpen", open ? "1" : "");
+  $("notesPanel").hidden = !open; $("chat").classList.toggle("notes-open", open); store.set("notesOpen", open ? "1" : "");
   if (open) { $("notesPanel").style.top = $("chat").querySelector(".col-head").offsetHeight + "px"; renderNotes(); $("noteInput").focus(); }
 }
 function setNoteKind(k) {
@@ -2227,7 +2398,7 @@ async function renderNotes() {
     $("notesList").innerHTML = '<div class="empty"><span class="spinner"></span></div>';
     try { state.notes.set(sid, await api("/api/notes?sid=" + sid)); } catch (e) { $("notesList").innerHTML = `<div class="empty errbox">${esc(e.message)}</div>`; return; }
     // "running" from before a page reload: that run was stopped with the page
-    for (const x of state.notes.get(sid)) if (x.status === "running" && !chat.noteRun) { x.status = "failed"; api("/api/note", { id: x.id, status: "failed" }).catch(() => {}); }
+    for (const x of state.notes.get(sid)) if (x.status === "running" && !chat.noteRun && !chat.busy) { x.status = "failed"; api("/api/note", { id: x.id, status: "failed" }).catch(() => {}); }
     if (state.chat?.session !== sid) return;
   }
   const list = state.notes.get(sid);
@@ -2330,7 +2501,54 @@ function continueQueue(chat, lastOk) {
 function afterRun(chat) { if (!chat.noteRun && chat.queueActive) setTimeout(() => continueQueue(chat, true)); }
 setNoteKind("todo");
 loadNoteCounts();
-if (store.get("notesOpen")) $("notesPanel").hidden = false;
+if (store.get("notesOpen")) { $("notesPanel").hidden = false; $("chat").classList.add("notes-open"); }
+
+/* ---------- resizable columns: drag a divider (or focus it and use ← →); double-click resets. Saved in this browser. ---------- */
+const PANES = {
+  left:  { el: () => document.body, prop: "--left-w", def: 280, min: 190, max: () => Math.min(520, innerWidth * 0.4) },
+  mid:   { el: () => document.body, prop: "--mid-w", def: 340, min: 230, max: () => Math.min(620, innerWidth * 0.45) },
+  notes: { el: () => $("chat"), prop: "--notes-user-w", def: null, min: 260, max: () => Math.max(300, $("chat").clientWidth - 320) },
+};
+function paneWidth(name) {
+  const p = PANES[name], v = parseFloat(getComputedStyle(p.el()).getPropertyValue(p.prop));
+  if (v) return v;
+  return name === "notes" ? $("notesPanel").offsetWidth : p.def;
+}
+function setPaneWidth(name, w, save) {
+  const p = PANES[name];
+  if (w == null) { p.el().style.removeProperty(p.prop); if (save) store.set("w-" + name, ""); return; }
+  w = Math.round(Math.min(Math.max(w, p.min), p.max()));
+  p.el().style.setProperty(p.prop, w + "px");
+  if (save) store.set("w-" + name, String(w));
+}
+function initResizer(id, name, dir) {  // dir: +1 when dragging right makes it wider (sidebars), -1 for the notes (left edge)
+  const r = $(id);
+  r.addEventListener("pointerdown", e => {
+    if (e.button !== 0) return;
+    e.preventDefault(); hideTip();
+    const startX = e.clientX, startW = paneWidth(name);
+    r.setPointerCapture(e.pointerId); r.classList.add("active"); document.body.classList.add("resizing");
+    const move = ev => setPaneWidth(name, startW + dir * (ev.clientX - startX), false);
+    const up = ev => {
+      r.releasePointerCapture(e.pointerId); r.classList.remove("active"); document.body.classList.remove("resizing");
+      r.removeEventListener("pointermove", move); r.removeEventListener("pointerup", up); r.removeEventListener("pointercancel", up);
+      setPaneWidth(name, paneWidth(name), true);
+    };
+    r.addEventListener("pointermove", move); r.addEventListener("pointerup", up); r.addEventListener("pointercancel", up);
+  });
+  r.addEventListener("dblclick", () => { setPaneWidth(name, PANES[name].def, true); if (PANES[name].def == null) toast("Notes width reset"); });
+  r.addEventListener("keydown", e => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const step = e.shiftKey ? 64 : 16;
+    setPaneWidth(name, paneWidth(name) + dir * (e.key === "ArrowRight" ? step : -step), true);
+  });
+}
+initResizer("leftResizer", "left", 1);
+initResizer("midResizer", "mid", 1);
+initResizer("notesResizer", "notes", -1);
+for (const name of Object.keys(PANES)) { const w = +store.get("w-" + name); if (w) setPaneWidth(name, w, false); }
+addEventListener("resize", () => { for (const name of Object.keys(PANES)) { const w = +store.get("w-" + name); if (w) setPaneWidth(name, w, false); } });
 
 /* ---------- ⏻ restart the dashboard server (e.g. after server.py changed) ---------- */
 async function loadStatus() {
@@ -2375,7 +2593,7 @@ loadStatus();
 setInterval(loadStatus, 60 * 1000);
 addEventListener("focus", loadStatus);
 
-loadProjects();
+loadProjects().then(resumeRuns);
 </script>
 </body>
 </html>
