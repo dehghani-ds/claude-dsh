@@ -328,6 +328,10 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .bell{position:relative}
 .group-head input.rename{text-transform:none;letter-spacing:0;font-size:13px;min-width:0;flex:1}
 .group-head .gname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* while renaming, the title's row must not cut the (slightly wider) text box into "…": let the box fill the space instead */
+.t:has(input.rename),.pt:has(input.rename),.gname:has(input.rename),#chatTitle:has(input.rename){overflow:visible;text-overflow:clip;opacity:1}
+.t:has(input.rename),.pt:has(input.rename){display:flex;align-items:center}
+.ttl:has(input.rename),.gname:has(input.rename){flex:1;min-width:0;display:flex}
 input.rename{font:inherit;font-weight:600;width:100%;padding:1px 6px;border-color:var(--accent);border-radius:5px;background:var(--panel);color:var(--text)}
 #chatTitle{cursor:text}
 .restart{position:relative}
