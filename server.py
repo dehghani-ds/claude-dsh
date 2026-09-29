@@ -17,6 +17,7 @@ import secrets
 import shutil
 import sqlite3
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -38,6 +39,7 @@ DB_PATH = Path(os.environ.get("WORKBENCH_DB") or HERE / "workbench.db")
 COLORS = ("slate", "red", "orange", "amber", "green", "teal", "blue", "violet", "pink")
 
 RUNS = {}  # run_id -> Popen
+STARTED = time.time()
 RUNS_LOCK = threading.Lock()
 _meta_cache = {}  # path -> (mtime, size, meta)
 _types_cache = {}  # path -> {"records": {type: example line}, "blocks": {type: example line}}
@@ -920,6 +922,39 @@ def notice_analyze(nid):
     return {"analysis": text}
 
 
+def server_status():
+    """For the ⏻ button: when this process started and whether server.py changed since (restart needed)."""
+    code_mtime = os.path.getmtime(__file__)
+    with RUNS_LOCK:
+        running = len(RUNS)
+    return {"started": STARTED, "pid": os.getpid(), "codeChanged": code_mtime > STARTED, "codeTime": code_mtime,
+            "running": running, "service": _is_service()}
+
+
+def _is_service():
+    """True when this process is the main process of the `workbench` systemd user service."""
+    try:
+        r = subprocess.run(["systemctl", "--user", "show", "-p", "MainPID", "--value", "workbench"],
+                           capture_output=True, text=True, timeout=3)
+        return r.stdout.strip() == str(os.getpid())
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def restart_soon():
+    """Replace this process with a fresh copy of itself: same PID, port and terminal, so it works the same when
+    started by hand or as the systemd service. Running chats and commands are stopped first."""
+    def go():
+        time.sleep(0.4)  # let the HTTP response go out
+        with RUNS_LOCK:
+            runs = list(RUNS.values())
+        for p in runs:
+            kill_run(p)
+        print("Restarting Claude Workbench…", flush=True)
+        os.execv(sys.executable, [sys.executable, os.path.abspath(sys.argv[0]), *sys.argv[1:]])
+    threading.Thread(target=go, daemon=True).start()
+
+
 def kill_run(p):
     """Stop a chat or shell run; shell runs have their own process group, so kill all of it."""
     try:
@@ -987,6 +1022,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, repo_info(q["cwd"]))
             if u.path == "/api/browse":
                 return self._send(200, browse(q.get("path")))
+            if u.path == "/api/status":
+                return self._send(200, server_status())
             if u.path == "/api/meta":
                 return self._send(200, meta_all())
             if u.path == "/api/notices":
@@ -1005,6 +1042,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._chat(b)
             if u.path == "/api/shell":
                 return self._shell(b)
+            if u.path == "/api/restart":
+                restart_soon()
+                return self._send(200, {"ok": True})
             if u.path == "/api/stop":
                 with RUNS_LOCK:
                     p = RUNS.get(b.get("run"))

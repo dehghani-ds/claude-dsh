@@ -311,6 +311,11 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .scroll>*,#msgs>*,.news-list>*,.dlg-list>*,.dlg-body>*{direction:ltr}
 /* news inbox */
 .bell{position:relative}
+.restart{position:relative}
+.restart.needed::after{content:"";position:absolute;top:1px;right:1px;width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--panel)}
+.restart.spin{animation:spin .9s linear infinite}
+#restartOverlay{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--bg) 70%,transparent);
+  backdrop-filter:blur(2px);font-size:15px;gap:10px}
 .bell .count{position:absolute;top:-4px;right:-5px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--accent);
   color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center}
 .news-banner{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--accent-weak);border-bottom:1px solid var(--user-border);
@@ -386,6 +391,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
   <div class="col-head">
     <div class="brand" data-tip="Local web UI for your Claude Code sessions.
 Reads ~/.claude/projects directly; groups &amp; tags are stored in workbench.db."><span>✳</span> Claude Workbench</div>
+    <button class="ghost restart" id="restartBtn" onclick="restartServer()" aria-label="Restart server" data-tip="Restart the dashboard server">⏻</button>
     <button class="ghost bell" id="bellBtn" onclick="openNews()" aria-label="Claude Code updates" data-tip="Claude Code updates: new versions, CLI changes and session-format changes that may affect this dashboard">🔔<span class="count" id="bellCount" hidden></span></button>
     <button class="ghost" data-tip="Manage groups &amp; tags: rename, recolor, reorder, delete" aria-label="Manage groups and tags" onclick="openManage()">⚙</button>
     <button class="ghost" data-tip="Switch between light and dark theme" aria-label="Toggle theme" onclick="toggleTheme()">◐</button>
@@ -645,6 +651,7 @@ Empty = worktree-<name>" placeholder="" list="wtBranchList" autocomplete="off">
   <div class="news-meta" id="newsMeta"></div>
   <div class="news-list" id="newsList"></div>
 </dialog>
+<div id="restartOverlay" hidden><span class="spinner"></span><span id="restartText">Restarting server…</span></div>
 <div id="toast" role="status"></div>
 <div id="tip" role="tooltip"></div>
 
@@ -2030,6 +2037,49 @@ async function checkNews() {
 loadNews();
 setInterval(loadNews, 5 * 60 * 1000);
 addEventListener("focus", loadNews);
+
+/* ---------- ⏻ restart the dashboard server (e.g. after server.py changed) ---------- */
+async function loadStatus() {
+  let st; try { st = await api("/api/status"); } catch (e) {
+    if (e.message === "not found") { $("restartBtn").classList.add("needed");
+      $("restartBtn").dataset.tip = "⚠ The running server is older than this page and must be restarted once by hand:\n" +
+        "systemctl --user restart workbench   (service)\nor Ctrl+C + python3 server.py   (terminal)"; }
+    return;
+  }
+  const b = $("restartBtn");
+  b.classList.toggle("needed", st.codeChanged);
+  b.dataset.tip = (st.codeChanged
+      ? `⚠ server.py changed at ${new Date(st.codeTime * 1000).toLocaleTimeString()}, after the server started — restart to use the new version.\n\n`
+      : "Restart the dashboard server.\n\n") +
+    `Running since ${new Date(st.started * 1000).toLocaleString()}${st.service ? " as the systemd service (workbench)" : ""} · pid ${st.pid}` +
+    (st.running ? `\n${st.running} chat/command run${st.running === 1 ? "" : "s"} in progress — a restart stops ${st.running === 1 ? "it" : "them"}.` : "");
+}
+async function restartServer() {
+  const busy = [...state.chats.values()].filter(c => c.busy);
+  const msg = "Restart the dashboard server?\n\nThe page reloads when it's back (a few seconds)." +
+    (busy.length ? `\n\n⚠ ${busy.length} chat${busy.length === 1 ? " is" : "s are"} still working and will be stopped:\n` + busy.map(c => "• " + c.title).join("\n") : "");
+  if (!confirm(msg)) return;
+  $("restartOverlay").hidden = false; $("restartBtn").classList.add("spin");
+  try { await api("/api/restart", {}); } catch (e) {
+    $("restartOverlay").hidden = true; $("restartBtn").classList.remove("spin");
+    // the page is always fresh from disk, but the running server can be older than the restart feature
+    if (e.message === "not found") return alert("This running server is an older version that can't restart itself yet.\n\n" +
+      "Restart it once by hand — after that the ⏻ button works:\n\n" +
+      "• running as the service:\n    systemctl --user restart workbench\n\n" +
+      "• running in a terminal:\n    press Ctrl+C there, then: python3 server.py");
+    return toast("Restart failed: " + e.message);
+  }
+  await new Promise(r => setTimeout(r, 1200));  // give it time to go down
+  for (let i = 0; i < 60; i++) {  // then wait until it answers again (up to ~30 s)
+    try { const r = await fetch("/", { cache: "no-store" }); if (r.ok) return location.reload(); } catch { }
+    $("restartText").textContent = `Restarting server… ${i > 6 ? "(still waiting — check `journalctl --user -u workbench`)" : ""}`;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  $("restartText").textContent = "The server didn't come back. Start it again from a terminal (python3 server.py) or `systemctl --user restart workbench`.";
+}
+loadStatus();
+setInterval(loadStatus, 60 * 1000);
+addEventListener("focus", loadStatus);
 
 loadProjects();
 </script>
