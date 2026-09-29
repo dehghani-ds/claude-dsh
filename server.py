@@ -441,6 +441,39 @@ def browse(path):
             "isRepo": (p / ".git").exists()}
 
 
+# ---------------------------------------------------------------- shell
+# Opens a terminal window in a folder on this machine. $WORKBENCH_TERMINAL (or $TERMINAL)
+# picks the program; otherwise the first installed one below is used.
+
+TERMINALS = (  # program, args; the folder is appended to the last arg (None = inherit the cwd)
+    ("gnome-terminal", ["--working-directory="]), ("kgx", ["--working-directory="]),
+    ("ptyxis", ["--new-window", "--working-directory="]), ("konsole", ["--workdir", ""]),
+    ("xfce4-terminal", ["--working-directory="]), ("tilix", ["--working-directory="]),
+    ("terminator", ["--working-directory="]), ("kitty", ["--directory", ""]),
+    ("alacritty", ["--working-directory", ""]), ("wezterm", ["start", "--cwd", ""]),
+    ("foot", ["--working-directory="]), ("x-terminal-emulator", None), ("xterm", None),
+)
+
+
+def open_shell(cwd):
+    if not os.path.isdir(cwd):
+        raise ValueError(f"directory does not exist: {cwd}")
+    custom = os.environ.get("WORKBENCH_TERMINAL") or os.environ.get("TERMINAL")
+    if custom and shutil.which(custom.split()[0]):
+        cmd = custom.split()
+    else:
+        for prog, args in TERMINALS:
+            exe = shutil.which(prog)
+            if exe:
+                cmd = [exe] if args is None else [exe, *args[:-1], args[-1] + cwd]
+                break
+        else:
+            raise RuntimeError("no terminal program found; set WORKBENCH_TERMINAL")
+    subprocess.Popen(cmd, cwd=cwd, start_new_session=True, stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return {"ok": True, "terminal": os.path.basename(cmd[0])}
+
+
 # ---------------------------------------------------------------- news inbox
 # Four checks feed the `notices` table:
 #   changelog  - new Claude Code versions in the official changelog
@@ -484,6 +517,7 @@ DASHBOARD_BRIEF = """\
   plugin_errors; stream_event deltas; assistant; user tool_result; result with cost/duration/denials);
 - shows session "last active" from the last message timestamp, and cost from cost-state records;
 - creates/removes git worktrees in <repo>/.claude/worktrees/<name>;
+- opens a terminal window (gnome-terminal, konsole, … or $WORKBENCH_TERMINAL) in a project/worktree folder;
 - stores folder groups, tags and this news inbox in SQLite."""
 
 NEWS_LOCK = threading.Lock()
@@ -811,6 +845,8 @@ class Handler(BaseHTTPRequestHandler):
                                                        b.get("base")))
             if u.path == "/api/worktree/remove":
                 return self._send(200, remove_worktree(b["cwd"], b["path"], b.get("force")))
+            if u.path == "/api/shell":
+                return self._send(200, open_shell(b["cwd"]))
             if u.path == "/api/folder":
                 return self._send(200, folder_set(b))
             if u.path == "/api/group":
