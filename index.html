@@ -311,6 +311,10 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .scroll>*,#msgs>*,.news-list>*,.dlg-list>*,.dlg-body>*{direction:ltr}
 /* news inbox */
 .bell{position:relative}
+.group-head input.rename{text-transform:none;letter-spacing:0;font-size:13px;min-width:0;flex:1}
+.group-head .gname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+input.rename{font:inherit;font-weight:600;width:100%;padding:1px 6px;border-color:var(--accent);border-radius:5px;background:var(--panel);color:var(--text)}
+#chatTitle{cursor:text}
 .restart{position:relative}
 .restart.needed::after{content:"";position:absolute;top:1px;right:1px;width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--panel)}
 .restart.spin{animation:spin .9s linear infinite}
@@ -461,7 +465,7 @@ Your chats are listed below under the worktree they ran in.">Git worktrees <span
 <main id="chat">
   <div class="col-head">
     <div style="flex:1;min-width:0">
-      <div id="chatTitle" data-tip="Session title (set by Claude or by /rename)">No chat open</div>
+      <div id="chatTitle" ondblclick="renameCurrentChat()" data-tip="Session title — double-click to rename">No chat open</div>
       <div id="chatSub" data-tip="Working folder · session ID"></div>
     </div>
     <div class="runs" id="runs" hidden>
@@ -913,10 +917,10 @@ function treeChat(key, c, loose) {
   const J = v => JSON.stringify(v).replace(/'/g, "&#39;");
   const folder = loose ? (c.cwd ? tilde(c.cwd) : "") : "";
   const tip = `${c.title}\n${c.mtime ? "Last active " + new Date(c.mtime * 1000).toLocaleString() : ""}` + (c.cwd ? `\nFolder: ${c.cwd}` : "") +
-    `\nClick to open${loose ? "" : " · drag onto a group to add it there"}`;
+    `\nClick to open · double-click to rename${loose ? "" : " · drag onto a group to add it there"}`;
   return `<div class="pchat ${loose ? "loose" : ""} ${state.session === c.id ? "active" : ""}" draggable="true" data-sid="${esc(c.id)}"
-      onclick='openChatFromTree(${J(key)}, ${J(c.id)})' ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')" data-tip="${tipAttr(tip)}">
-    <div class="prow"><span class="pt">${chatBadge(c.id)}${loose ? "💬 " : ""}${esc(c.title || "(untitled)")}</span>
+      onclick='sessionClick(event, ${J(c.id)}, ${J(key)})' ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')" data-tip="${tipAttr(tip)}">
+    <div class="prow"><span class="pt">${chatBadge(c.id)}${loose ? "💬 " : ""}<span class="ttl">${esc(c.title || "(untitled)")}</span></span>
       <span class="pa">${c.mtime ? ago(c.mtime) : ""}</span>
       <button class="ghost edit" data-tip="Set group and tags for this chat" aria-label="Edit chat group and tags" onclick='event.stopPropagation();openChatDlg(${J(c.id)}, ${J(c.title || "")})'>🏷</button></div>
     ${folder ? `<div class="ps">${esc(folder)}</div>` : ""}
@@ -953,6 +957,7 @@ function projectItem(p, only) {
     ${tags.length || listGroup ? `<div class="chips">${listGroup ? `<span class="chip" style="--cc:var(--c-${listGroup.color})" data-tip="${tipAttr("Group: " + listGroup.name)}">▣ ${esc(listGroup.name)}</span>` : ""}${tags.map(t => chip(t)).join("")}</div>` : ""}</div>${chatsHtml}`;
 }
 function renderProjects() {
+  if (state.renaming) { state.redrawAfterRename = true; return; }  // don't wipe the rename box
   renderFilterBar();
   const entries = state.projects.map(dirEntry).filter(Boolean);
   const sections = [...state.meta.groups.map(g => ({ id: g.id, name: g.name, color: g.color })), { id: 0, name: "Ungrouped", color: "slate" }];
@@ -973,7 +978,7 @@ function renderProjects() {
     const looseHtml = loose.map(c => treeChat(c.project, c, true)).join("");
     return `<div class="group ${isCollapsed ? "collapsed" : ""}" data-group="${g.id}"
         ondragover="dragOver(event)" ondragleave="this.classList.remove('drop')" ondrop="dropOn(event, ${g.id})">
-      <div class="group-head" onclick="toggleGroup(${g.id})" data-tip="${tipAttr(`${g.id ? "Group" : "Folders without a group"}: ${g.name}\nClick to ${isCollapsed ? "expand" : "collapse"} · drop a folder or chat here to add it`)}"><span class="caret">▼</span><span class="dot" style="--cc:var(--c-${g.color})" data-tip="Group color: ${g.color} (change it in ⚙)"></span>${esc(g.name)}<span class="n" data-tip="${items.length} folder${items.length === 1 ? "" : "s"}${loose.length ? ` + ${loose.length} chat${loose.length === 1 ? "" : "s"}` : ""}${filtering ? " match the filter" : ""}">${n}</span></div>
+      <div class="group-head" onclick="groupHeadClick(event, ${g.id})" data-tip="${tipAttr(`${g.id ? "Group" : "Folders without a group"}: ${g.name}\nClick to ${isCollapsed ? "expand" : "collapse"}${g.id ? " · double-click to rename" : ""} · drop a folder or chat here to add it`)}"><span class="caret">▼</span><span class="dot" style="--cc:var(--c-${g.color})" data-tip="Group color: ${g.color} (change it in ⚙)"></span><span class="gname">${esc(g.name)}</span><span class="n" data-tip="${items.length} folder${items.length === 1 ? "" : "s"}${loose.length ? ` + ${loose.length} chat${loose.length === 1 ? "" : "s"}` : ""}${filtering ? " match the filter" : ""}">${n}</span></div>
       <div class="group-body">${looseHtml}${items.map(e => projectItem(e.p, e.only)).join("") || (looseHtml ? "" : '<div class="s" style="padding:8px 14px;color:var(--muted);font-size:12px" data-tip="Drag a folder or chat here, or use 🏷">Drag folders or chats here</div>')}</div></div>`;
   }).join("");
   $("projects").innerHTML = html || '<div class="empty">Nothing matches.</div>';
@@ -1138,6 +1143,7 @@ async function refreshRepoAndSessions() {
   renderSessions();
 }
 function renderSessions() {
+  if (state.renaming) { state.redrawAfterRename = true; return; }
   const q = $("sessSearch").value.toLowerCase();
   const list = state.sessions.filter(s => !q || (s.title + " " + (s.firstPrompt || "") + " " + (s.lastPrompt || "")).toLowerCase().includes(q));
   if (state.repo) {
@@ -1153,12 +1159,12 @@ function sessionItem(s) {
   {
     const tip = `${s.title}\nSession ${s.id}\nLast active ${new Date(s.mtime * 1000).toLocaleString()} · ${s.messages} messages` +
       (s.gitBranch && s.gitBranch !== "HEAD" ? `\nGit branch: ${s.gitBranch}` : "") + (s.cost ? `\nCost so far: $${s.cost.toFixed(4)}` : "") +
-      (s.firstPrompt ? `\n\nFirst prompt: ${s.firstPrompt.slice(0, 160)}` : "") + "\n\nClick to open and continue";
+      (s.firstPrompt ? `\n\nFirst prompt: ${s.firstPrompt.slice(0, 160)}` : "") + "\n\nClick to open and continue · double-click to rename";
     const c = state.chats.get(s.id);
     const badge = c?.busy ? `<span class="badge run" data-tip="${tipAttr(`Claude is working on this chat (${c.status || "working"}).\nOpen it any time — it keeps running either way.`)}"><span class="spinner"></span>working</span>`
       : state.unseen.has(s.id) ? `<span class="badge new" data-tip="Finished while you were in another chat">● new</span>` : "";
-    return `<div class="item ${state.session === s.id ? "active" : ""}" onclick="openSession('${s.id}')" data-tip="${tipAttr(tip)}">
-      <div class="t">${badge}${esc(s.title)}<button class="ghost edit chat-edit" data-tip="Set group and tags for this chat" aria-label="Edit chat group and tags" onclick='event.stopPropagation();openChatDlg(${JSON.stringify(s.id)}, ${JSON.stringify(s.title).replace(/'/g, "&#39;")})'>🏷</button></div>
+    return `<div class="item ${state.session === s.id ? "active" : ""}" onclick="sessionClick(event, '${s.id}')" data-tip="${tipAttr(tip)}">
+      <div class="t">${badge}<span class="ttl">${esc(s.title)}</span><button class="ghost edit chat-edit" data-tip="Set group and tags for this chat" aria-label="Edit chat group and tags" onclick='event.stopPropagation();openChatDlg(${JSON.stringify(s.id)}, ${JSON.stringify(s.title).replace(/'/g, "&#39;")})'>🏷</button></div>
       ${chatChips(s.id, true)}
       <div class="s">${ago(s.mtime)} · ${s.messages} msgs${s.gitBranch && s.gitBranch !== "HEAD" ? " · ⎇ " + esc(s.gitBranch) : ""}${s.cost ? " · $" + s.cost.toFixed(2) : ""}</div>
       ${s.lastPrompt ? `<div class="s">↳ ${esc(s.lastPrompt)}</div>` : ""}</div>`;
@@ -1398,7 +1404,7 @@ async function browseTo(path) {
 /* ---------- chat ---------- */
 function setChatHeader(title, cwd, id) {
   $("chatTitle").textContent = title; $("chatSub").textContent = tilde(cwd) + (id ? "  ·  " + id : "  ·  new session");
-  $("chatTitle").dataset.tip = title;
+  $("chatTitle").dataset.tip = id ? `${title}\nDouble-click to rename` : title;
   $("chatSub").dataset.tip = `Working folder: ${cwd}\n` + (id ? `Session ID: ${id}` : "New session — an ID is assigned when you send the first message");
   $("copyBtn").hidden = !id; $("chatShellBtn").hidden = false; $("prompt").disabled = false; $("sendBtn").disabled = false;
 }
@@ -1460,6 +1466,69 @@ async function openSession(id) {
 function scrollDown(force, pane = curPane()) {
   if (pane !== curPane()) return;  // a chat in the background: nothing to scroll
   const el = $("msgs"); if (force || el.scrollHeight - el.scrollTop - el.clientHeight < 200) el.scrollTop = el.scrollHeight;
+}
+
+/* ---------- rename a chat: double-click its title (list, tree or chat header) ---------- */
+/* one click opens; the 2nd click of a double-click renames (event.detail counts clicks, even if the row was redrawn) */
+function sessionClick(e, sid, key) {
+  if (e.detail >= 2) return startRename(e.currentTarget.querySelector(".ttl"), sid);
+  if (e.detail === 1) key !== undefined ? openChatFromTree(key, sid) : openSession(sid);
+}
+function renameCurrentChat() {
+  if (state.chat?.session) startRename($("chatTitle"), state.chat.session);
+}
+function startRename(el, sid) {
+  inlineEdit(el, { label: "New chat name", max: 200, save: async v => {
+    const r = await api("/api/session/rename", { id: sid, title: v });
+    applyChatTitle(sid, r.title); toast(`Renamed to “${r.title}”`);
+  } });
+}
+/* turn a title into a text box: Enter or clicking away saves, Esc cancels. `save(newValue)` does the work
+   (and redraws); lists don't redraw underneath while you type. */
+function inlineEdit(el, { label, max, save }) {
+  if (!el || el.querySelector("input")) return;
+  hideTip();
+  const old = el.textContent.trim();
+  const row = el.closest("[draggable]"); if (row) row.draggable = false;  // let the mouse select text
+  const input = document.createElement("input"); input.className = "rename"; input.value = old; input.maxLength = max;
+  input.setAttribute("aria-label", label);
+  el.replaceChildren(input); input.focus(); input.select();
+  state.renaming = true;
+  let done = false;
+  const finish = async keep => {
+    if (done) return; done = true;
+    if (row) row.draggable = true;
+    state.renaming = false;
+    const catchUp = () => { if (state.redrawAfterRename) { state.redrawAfterRename = false; renderSessions(); renderProjects(); } };
+    const v = input.value.replace(/\s+/g, " ").trim();
+    el.textContent = keep && v ? v : old;
+    if (!keep || !v || v === old) return catchUp();
+    try { state.redrawAfterRename = false; await save(v); }
+    catch (err) { el.textContent = old; catchUp(); toast("Rename failed: " + err.message); }
+  };
+  input.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); finish(true); } else if (e.key === "Escape") finish(false); });
+  input.addEventListener("blur", () => finish(true));
+  for (const t of ["click", "dblclick", "mousedown"]) input.addEventListener(t, e => e.stopPropagation());
+}
+/* group headings on the left: click folds, double-click renames ("Ungrouped" can't be renamed) */
+function groupHeadClick(e, id) {
+  if (e.detail === 1) return toggleGroup(id);
+  if (e.detail !== 2 || !id) return;
+  toggleGroup(id);  // the first click of the double-click folded it: undo that
+  const g = state.meta.groups.find(x => x.id === id);
+  inlineEdit(document.querySelector(`#projects .group[data-group="${id}"] .gname`), { label: "New group name", max: 40, save: async v => {
+    await api("/api/group", { id, name: v, color: g.color });
+    await reloadMeta(); toast(`Group renamed to “${v}”`);
+  } });
+}
+/* show a new title everywhere the chat appears */
+function applyChatTitle(sid, title) {
+  for (const s of state.sessions) if (s.id === sid) s.title = title;
+  for (const { list } of state.projSessions.values()) for (const s of list) if (s.id === sid) s.title = title;
+  if (state.meta.chats?.[sid]) state.meta.chats[sid].title = title;
+  const c = state.chats.get(sid);
+  if (c) { c.title = title; if (state.chat === c) setChatHeader(title, c.cwd, sid); }
+  renderSessions(); renderProjects(); renderRuns();
 }
 
 /* "N working" pill in the chat header: jump to any chat Claude is busy with */

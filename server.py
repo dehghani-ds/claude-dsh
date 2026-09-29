@@ -2,7 +2,7 @@
 """Local web UI for Claude Code: browse sessions, chat, manage git worktrees.
 
 Run:  python3 server.py [--port 8765]
-      (or at login as a systemd user service: see workbench.service)
+      (or at login as a systemd user service: ./install-service.sh — see README.md)
 Then open the printed URL. Binds to 127.0.0.1 only; every API call needs the
 per-run token that is embedded into the served page.
 """
@@ -359,6 +359,25 @@ def find_session_file(session_id):
     for f in PROJECTS_DIR.glob(f"*/{session_id}.jsonl"):
         return f
     raise ValueError("session not found")
+
+
+def rename_session(sid, title):
+    """Rename a chat the way Claude Code's /rename does: append a custom-title record to its session
+    file (the newest one wins), so `claude --resume` shows the new name too."""
+    title = " ".join((title or "").split())
+    if not title or len(title) > 200:
+        raise ValueError("name must be 1-200 characters")
+    f = find_session_file(sid)
+    with open(f, "rb") as fh:
+        fh.seek(0, os.SEEK_END)
+        ends_with_newline = True
+        if fh.tell() > 0:
+            fh.seek(-1, os.SEEK_END)
+            ends_with_newline = fh.read(1) == b"\n"
+    record = json.dumps({"type": "custom-title", "customTitle": title, "sessionId": sid}, ensure_ascii=False)
+    with open(f, "a", encoding="utf-8") as fh:
+        fh.write(("" if ends_with_newline else "\n") + record + "\n")
+    return {"ok": True, "title": session_meta(f)["title"]}
 
 
 def read_transcript(session_id):
@@ -1060,6 +1079,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, remove_worktree(b["cwd"], b["path"], b.get("force")))
             if u.path == "/api/open-terminal":  # "open shell" button: a terminal window in that folder
                 return self._send(200, open_shell(b["cwd"]))
+            if u.path == "/api/session/rename":
+                return self._send(200, rename_session(b.get("id"), b.get("title")))
             if u.path == "/api/chatmeta":
                 return self._send(200, chat_set(b))
             if u.path == "/api/folder":
