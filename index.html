@@ -11,7 +11,7 @@
 :root{
   --bg:#f7f6f3; --panel:#ffffff; --panel2:#f1efea; --border:#e2dfd8; --text:#1f1e1c; --muted:#6f6b63;
   --accent:#c96442; --accent-weak:#f5e4dc; --ok:#2f7d4f; --warn:#a4661a; --err:#b3372f;
-  --code:#f3f1ec; --user:#efe9df;
+  --code:#f3f1ec; --user:#efe9df; --chat-bg:#f4f2ee; --guide:#dcd8cf;
   --user-bg:#f7dccf; --user-fg:#2e160c; --user-border:#e3a489; --user-shadow:0 2px 6px rgba(201,100,66,.18);
   --term-bg:#262522; --term-fg:#f1efe9; --term-border:#3b3935; --term-dim:#b9b4aa; --term-accent:#f0a07f; --term-err:#f28b82; --shadow:0 1px 2px rgba(0,0,0,.05);
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
@@ -19,13 +19,13 @@
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#1b1a18; --panel:#22211f; --panel2:#2a2926; --border:#3a3834; --text:#ecebe8; --muted:#a19d95;
   --accent:#e0896a; --accent-weak:#3d2a22; --ok:#6cc08f; --warn:#e0a85a; --err:#ef7d74;
-  --code:#2c2b28; --user:#2f2c27;
+  --code:#2c2b28; --user:#2f2c27; --chat-bg:#1e1d1b; --guide:#3f3d38;
   --user-bg:#4a2e22; --user-fg:#fbeee7; --user-border:#8a5540; --user-shadow:0 2px 8px rgba(0,0,0,.35);
   --term-bg:#121110; --term-fg:#ecebe8; --term-border:#34322e; --term-dim:#a8a399; --term-accent:#e0896a; --term-err:#ef7d74; --shadow:none;}}
 :root[data-theme="dark"]{
   --bg:#1b1a18; --panel:#22211f; --panel2:#2a2926; --border:#3a3834; --text:#ecebe8; --muted:#a19d95;
   --accent:#e0896a; --accent-weak:#3d2a22; --ok:#6cc08f; --warn:#e0a85a; --err:#ef7d74;
-  --code:#2c2b28; --user:#2f2c27;
+  --code:#2c2b28; --user:#2f2c27; --chat-bg:#1e1d1b; --guide:#3f3d38;
   --user-bg:#4a2e22; --user-fg:#fbeee7; --user-border:#8a5540; --user-shadow:0 2px 8px rgba(0,0,0,.35);
   --term-bg:#121110; --term-fg:#ecebe8; --term-border:#34322e; --term-dim:#a8a399; --term-accent:#e0896a; --term-err:#ef7d74; --shadow:none;}
 *{box-sizing:border-box}
@@ -93,7 +93,22 @@ section.wt summary .wt-add:hover{background:var(--accent-weak)}
 /* left sidebar tree: directory -> its chats */
 .pcaret{display:inline-block;width:14px;flex:none;color:var(--muted);font-size:10px;transition:transform .15s;cursor:pointer;text-align:center}
 .item.open .pcaret{transform:rotate(90deg)}
-.pchats{background:var(--bg);border-bottom:1px solid var(--border);padding:2px 0 4px}
+/* directories vs chats: folders are solid (bold, filled icon); chats are lighter, indented, on another surface */
+#projects .item{background:var(--panel)}
+#projects .item .t{font-weight:650}
+.ficon,.cicon{width:14px;height:14px;flex:none;display:inline-block;vertical-align:-2px;margin-right:5px}
+.ficon{color:var(--accent)}
+.cicon{color:var(--muted)}
+.pchats{background:var(--chat-bg);border-bottom:1px solid var(--border);padding:2px 0 4px;position:relative}
+.pchats::before{content:"";position:absolute;left:20px;top:0;bottom:8px;border-left:1.5px solid var(--guide)}
+.pchat .pt,.pchat .pa,.pchat .ps{opacity:.75;transition:opacity .12s}
+.pchat .pt{font-weight:450}
+.pchat:hover .pt,.pchat:hover .pa,.pchat:hover .ps,.pchat.active .pt,.pchat.active .pa{opacity:1}
+.pchat.active .pt{font-weight:600}
+#sessions .item .t .ttl{font-weight:500}
+#sessions .wtg .item{background:var(--chat-bg)}
+#sessions .wtg .item:hover{background:var(--panel2)}
+#sessions .wtg .item.active{background:var(--accent-weak)}
 .pchat{position:relative;padding:5px 8px 5px 32px;cursor:pointer;font-size:13px}
 .pchat .prow{display:flex;align-items:center;gap:4px}
 .pchat:hover{background:var(--panel2)}
@@ -105,7 +120,7 @@ section.wt summary .wt-add:hover{background:var(--accent-weak)}
 @media (hover:none){.pchat .edit{opacity:1}}
 .pchat .chips{margin-top:2px}
 .pchat .ps{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pchat.loose{padding-left:14px;border-bottom:1px solid var(--border);background:var(--panel)}
+.pchat.loose{padding-left:14px;border-bottom:1px solid var(--border);background:var(--chat-bg)}
 .pchat.dragging{opacity:.4}
 .pmore{padding:3px 32px 5px;font-size:12px}
 .pmore a{color:var(--accent)}
@@ -768,6 +783,8 @@ const tagById = id => state.meta.tags.find(t => t.id === id);
 const chatOf = sid => state.meta.chats?.[sid] || { group: null, tags: [] };
 const tagUses = id => Object.values(state.meta.folders).filter(f => f.tags.includes(id)).length +
   Object.values(state.meta.chats || {}).filter(c => c.tags.includes(id)).length;
+const ICON_DIR = `<svg class="ficon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1.5 4a1 1 0 0 1 1-1h3.7l1.5 1.6h5.8a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/></svg>`;
+const ICON_CHAT = `<svg class="cicon" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M2.5 3h11a1 1 0 0 1 1 1v6.2a1 1 0 0 1-1 1H7.2L4.3 13.6v-2.4H2.5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/></svg>`;
 const SHELL_TIP = "Open a terminal window in this folder";
 const WT_BADGE_TIP = "This folder is a git worktree created by Claude Code (inside .claude/worktrees/)";
 const MISSING_TIP = "This folder no longer exists on disk (deleted, moved or renamed).\nOld chats can still be read, but new chats can't run here.";
@@ -920,7 +937,7 @@ function treeChat(key, c, loose) {
     `\nClick to open · double-click to rename${loose ? "" : " · drag onto a group to add it there"}`;
   return `<div class="pchat ${loose ? "loose" : ""} ${state.session === c.id ? "active" : ""}" draggable="true" data-sid="${esc(c.id)}"
       onclick='sessionClick(event, ${J(c.id)}, ${J(key)})' ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')" data-tip="${tipAttr(tip)}">
-    <div class="prow"><span class="pt">${chatBadge(c.id)}${loose ? "💬 " : ""}<span class="ttl">${esc(c.title || "(untitled)")}</span></span>
+    <div class="prow"><span class="pt">${ICON_CHAT}${chatBadge(c.id)}<span class="ttl">${esc(c.title || "(untitled)")}</span></span>
       <span class="pa">${c.mtime ? ago(c.mtime) : ""}</span>
       <button class="ghost edit" data-tip="Set group and tags for this chat" aria-label="Edit chat group and tags" onclick='event.stopPropagation();openChatDlg(${J(c.id)}, ${J(c.title || "")})'>🏷</button></div>
     ${folder ? `<div class="ps">${esc(folder)}</div>` : ""}
@@ -951,7 +968,7 @@ function projectItem(p, only) {
       onclick="clickProject('${esc(p.key)}')" ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')">
     <button class="ghost edit" data-tip="Set group and tags for this folder" aria-label="Edit group and tags" onclick='event.stopPropagation();openFolderDlg(${JSON.stringify(p.cwd)})'>🏷</button>
     ${p.exists ? `<button class="ghost edit shell" data-tip="${SHELL_TIP}" aria-label="Open shell here" onclick='event.stopPropagation();openShell(${JSON.stringify(p.cwd)})'>&gt;_</button>` : ""}
-    <div class="t"><span class="pcaret" data-tip="${open ? "Hide" : "Show"} chats" onclick="event.stopPropagation();toggleProjOpen('${esc(p.key)}')">▶</span>${[...state.chats.values()].some(c => c.busy && c.cwd === p.cwd) ? `<span class="badge run" data-tip="A chat in this folder is running"><span class="spinner"></span>working</span>` : ""}${esc(name)}${p.isWorktree ? `<span class="badge wt" data-tip="${WT_BADGE_TIP}">worktree</span>` : ""}${p.exists ? "" : `<span class="badge gone" data-tip="${MISSING_TIP}">missing</span>`}</div>
+    <div class="t"><span class="pcaret" data-tip="${open ? "Hide" : "Show"} chats" onclick="event.stopPropagation();toggleProjOpen('${esc(p.key)}')">▶</span>${ICON_DIR}${[...state.chats.values()].some(c => c.busy && c.cwd === p.cwd) ? `<span class="badge run" data-tip="A chat in this folder is running"><span class="spinner"></span>working</span>` : ""}${esc(name)}${p.isWorktree ? `<span class="badge wt" data-tip="${WT_BADGE_TIP}">worktree</span>` : ""}${p.exists ? "" : `<span class="badge gone" data-tip="${MISSING_TIP}">missing</span>`}</div>
     <div class="s">${esc(tilde(p.cwd))}</div>
     <div class="s">${p.sessions} chat${p.sessions === 1 ? "" : "s"} · ${ago(p.mtime)}</div>
     ${tags.length || listGroup ? `<div class="chips">${listGroup ? `<span class="chip" style="--cc:var(--c-${listGroup.color})" data-tip="${tipAttr("Group: " + listGroup.name)}">▣ ${esc(listGroup.name)}</span>` : ""}${tags.map(t => chip(t)).join("")}</div>` : ""}</div>${chatsHtml}`;
@@ -1164,7 +1181,7 @@ function sessionItem(s) {
     const badge = c?.busy ? `<span class="badge run" data-tip="${tipAttr(`Claude is working on this chat (${c.status || "working"}).\nOpen it any time — it keeps running either way.`)}"><span class="spinner"></span>working</span>`
       : state.unseen.has(s.id) ? `<span class="badge new" data-tip="Finished while you were in another chat">● new</span>` : "";
     return `<div class="item ${state.session === s.id ? "active" : ""}" onclick="sessionClick(event, '${s.id}')" data-tip="${tipAttr(tip)}">
-      <div class="t">${badge}<span class="ttl">${esc(s.title)}</span><button class="ghost edit chat-edit" data-tip="Set group and tags for this chat" aria-label="Edit chat group and tags" onclick='event.stopPropagation();openChatDlg(${JSON.stringify(s.id)}, ${JSON.stringify(s.title).replace(/'/g, "&#39;")})'>🏷</button></div>
+      <div class="t">${ICON_CHAT}${badge}<span class="ttl">${esc(s.title)}</span><button class="ghost edit chat-edit" data-tip="Set group and tags for this chat" aria-label="Edit chat group and tags" onclick='event.stopPropagation();openChatDlg(${JSON.stringify(s.id)}, ${JSON.stringify(s.title).replace(/'/g, "&#39;")})'>🏷</button></div>
       ${chatChips(s.id, true)}
       <div class="s">${ago(s.mtime)} · ${s.messages} msgs${s.gitBranch && s.gitBranch !== "HEAD" ? " · ⎇ " + esc(s.gitBranch) : ""}${s.cost ? " · $" + s.cost.toFixed(2) : ""}</div>
       ${s.lastPrompt ? `<div class="s">↳ ${esc(s.lastPrompt)}</div>` : ""}</div>`;
@@ -1230,7 +1247,7 @@ function wtGroupHtml(g, searching) {
   return `<div class="wtg ${collapsed ? "collapsed" : ""} ${here ? "here" : ""} ${g.removed ? "removed" : ""}" data-path="${esc(g.path)}">
     <div class="wtg-head" onclick='toggleWtg(${J(g.removed ? "open:" + g.path : g.path)})' data-tip="${tipAttr(tip)}">
       <span class="caret">▼</span>
-      <div class="info"><div class="nm"><span class="t0">${esc(name)}</span>${badges}</div>${branch ? `<div class="br">${esc(branch)}</div>` : ""}</div>
+      <div class="info"><div class="nm">${ICON_DIR}<span class="t0">${esc(name)}</span>${badges}</div>${branch ? `<div class="br">${esc(branch)}</div>` : ""}</div>
       <span class="acts">${acts}</span>
       <span class="n" data-tip="Chats in this worktree">${g.items.length}</span>
     </div>
