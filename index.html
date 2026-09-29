@@ -326,6 +326,33 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .scroll>*,#msgs>*,.news-list>*,.dlg-list>*,.dlg-body>*{direction:ltr}
 /* news inbox */
 .bell{position:relative}
+/* per-chat notes & to-dos drawer */
+#chat{position:relative}
+.notes{position:absolute;right:0;bottom:0;width:min(370px,94%);z-index:6;display:flex;flex-direction:column;background:var(--panel);
+  border-left:1px solid var(--border);box-shadow:-8px 0 24px rgba(0,0,0,.12)}
+.notes-head{display:flex;align-items:center;gap:6px;padding:10px 12px;border-bottom:1px solid var(--border)}
+.notes-head .sp{flex:1}
+.notes-add{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:6px}
+.notes-add textarea{width:100%;resize:vertical;min-height:44px;font-size:13px}
+.notes-list{flex:1;overflow:auto;padding:4px 0 12px}
+.notes-sec{padding:10px 12px 4px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.note{display:flex;gap:8px;align-items:flex-start;padding:7px 12px;border-bottom:1px dashed var(--border)}
+.note:hover{background:var(--panel2)}
+.note input[type=checkbox]{margin-top:3px;accent-color:var(--accent);flex:none}
+.note .nk{flex:none;font-size:13px;margin-top:1px}
+.note .nt{flex:1;min-width:0;white-space:pre-wrap;word-break:break-word;font-size:13.5px;cursor:text}
+.note.done .nt{text-decoration:line-through;color:var(--muted)}
+.note .nt textarea{width:100%;font:inherit;min-height:52px;resize:vertical}
+.note .nacts{display:flex;align-items:center;gap:0;flex:none;opacity:.55}
+.note:hover .nacts,.note:focus-within .nacts,.note.running .nacts,.note.queued .nacts{opacity:1}
+@media (hover:none){.note .nacts{opacity:1}}
+.note .nacts button{padding:1px 5px}
+.nst{font-size:11px;font-weight:600;padding:0 6px;border-radius:8px;border:1px solid currentColor;margin-right:3px;white-space:nowrap}
+.nst.queued{color:var(--warn)}.nst.running{color:var(--accent)}.nst.applied{color:var(--ok)}.nst.failed{color:var(--err)}
+.note.running{box-shadow:inset 3px 0 0 var(--accent)}
+.notes details summary{cursor:pointer}
+.badge.nb{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 55%,transparent);margin:0 6px 0 0}
+#notesBtn.has{color:var(--accent);font-weight:600}
 .group-head input.rename{text-transform:none;letter-spacing:0;font-size:13px;min-width:0;flex:1}
 .group-head .gname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* while renaming, the title's row must not cut the (slightly wider) text box into "…": let the box fill the space instead */
@@ -487,6 +514,7 @@ Your chats are listed below under the worktree they ran in.">Git worktrees <span
       <div id="chatTitle" ondblclick="renameCurrentChat()" data-tip="Session title — double-click to rename">No chat open</div>
       <div id="chatSub" data-tip="Working folder · session ID"></div>
     </div>
+    <button class="ghost" id="notesBtn" onclick="toggleNotes()" hidden data-tip="Notes and to-dos for this chat">📝 <span id="notesCount"></span></button>
     <div class="runs" id="runs" hidden>
       <button class="ghost" id="runsBtn" onclick="toggleRuns(event)"></button>
       <div class="runs-menu" id="runsMenu" hidden></div>
@@ -500,6 +528,21 @@ cd <folder> && claude --resume <id>" onclick="copyResume()" hidden>⧉ Terminal 
     <button class="primary" onclick="openNews('unread')" data-tip="Open the updates inbox, showing unread items">View</button>
     <button class="ghost" onclick="dismissBanner()" data-tip="Hide this banner until something new arrives (items stay unread in 🔔)" aria-label="Dismiss">✕</button>
   </div>
+  <aside class="notes" id="notesPanel" hidden>
+    <div class="notes-head">
+      <b data-tip="Saved with this chat in workbench.db — still here after a reload or a reboot">📝 Notes &amp; to-dos</b><span class="sp"></span>
+      <button id="queueBtn" hidden onclick="startQueue()"></button>
+      <button class="ghost" onclick="toggleNotes(false)" aria-label="Close" data-tip="Close (the notes stay saved)">✕</button>
+    </div>
+    <div class="notes-add">
+      <div class="seg" id="noteKindSeg">
+        <button data-k="todo" onclick="setNoteKind('todo')" data-tip="A task with a checkbox. ▶ sends it to Claude as a prompt.">☐ To-do</button>
+        <button data-k="note" onclick="setNoteKind('note')" data-tip="A free-text note, e.g. what you were doing in this chat">📝 Note</button>
+      </div>
+      <textarea id="noteInput" rows="2" placeholder="Add a to-do…  (Enter adds · Shift+Enter new line)"></textarea>
+    </div>
+    <div class="notes-list" id="notesList"></div>
+  </aside>
   <div id="msgs"><div class="empty" id="msgsEmpty">Open a session to read and continue it, or start a new chat.</div></div>
   <div class="composer">
     <div class="composer-inner">
@@ -941,7 +984,7 @@ function treeChat(key, c, loose) {
     `\nClick to open · double-click to rename${loose ? "" : " · drag onto a group to add it there"}`;
   return `<div class="pchat ${loose ? "loose" : ""} ${state.session === c.id ? "active" : ""}" draggable="true" data-sid="${esc(c.id)}"
       onclick='sessionClick(event, ${J(c.id)}, ${J(key)})' ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')" data-tip="${tipAttr(tip)}">
-    <div class="prow"><span class="pt">${ICON_CHAT}${chatBadge(c.id)}<span class="ttl">${esc(c.title || "(untitled)")}</span></span>
+    <div class="prow"><span class="pt">${ICON_CHAT}${chatBadge(c.id)}${noteBadge(c.id)}<span class="ttl">${esc(c.title || "(untitled)")}</span></span>
       <span class="pa">${c.mtime ? ago(c.mtime) : ""}</span>
       <button class="ghost edit" data-tip="Set group and tags for this chat" aria-label="Edit chat group and tags" onclick='event.stopPropagation();openChatDlg(${J(c.id)}, ${J(c.title || "")})'>🏷</button></div>
     ${folder ? `<div class="ps">${esc(folder)}</div>` : ""}
@@ -1185,7 +1228,7 @@ function sessionItem(s) {
     const badge = c?.busy ? `<span class="badge run" data-tip="${tipAttr(`Claude is working on this chat (${c.status || "working"}).\nOpen it any time — it keeps running either way.`)}"><span class="spinner"></span>working</span>`
       : state.unseen.has(s.id) ? `<span class="badge new" data-tip="Finished while you were in another chat">● new</span>` : "";
     return `<div class="item ${state.session === s.id ? "active" : ""}" onclick="sessionClick(event, '${s.id}')" data-tip="${tipAttr(tip)}">
-      <div class="t">${ICON_CHAT}${badge}<span class="ttl">${esc(s.title)}</span><button class="ghost edit chat-edit" data-tip="Set group and tags for this chat" aria-label="Edit chat group and tags" onclick='event.stopPropagation();openChatDlg(${JSON.stringify(s.id)}, ${JSON.stringify(s.title).replace(/'/g, "&#39;")})'>🏷</button></div>
+      <div class="t">${ICON_CHAT}${badge}${noteBadge(s.id)}<span class="ttl">${esc(s.title)}</span><button class="ghost edit chat-edit" data-tip="Set group and tags for this chat" aria-label="Edit chat group and tags" onclick='event.stopPropagation();openChatDlg(${JSON.stringify(s.id)}, ${JSON.stringify(s.title).replace(/'/g, "&#39;")})'>🏷</button></div>
       ${chatChips(s.id, true)}
       <div class="s">${ago(s.mtime)} · ${s.messages} msgs${s.gitBranch && s.gitBranch !== "HEAD" ? " · ⎇ " + esc(s.gitBranch) : ""}${s.cost ? " · $" + s.cost.toFixed(2) : ""}</div>
       ${s.lastPrompt ? `<div class="s">↳ ${esc(s.lastPrompt)}</div>` : ""}</div>`;
@@ -1445,7 +1488,7 @@ function makeChat(key, fields) {
   const chat = { key, session: null, cwd: null, shellCwd: null, shellCtx: [], busy: false, run: null, status: "", title: "New chat", draft: "", pane, ...fields };
   state.chats.set(key, chat); return chat;
 }
-const keepChat = c => c.busy || c.shellCtx.length;  // otherwise it's reloaded fresh from disk next time
+const keepChat = c => c.busy || c.shellCtx.length || c.queueActive;  // otherwise it's reloaded fresh from disk next time
 function dropChat(c) { c.pane.remove(); if (state.chats.get(c.key) === c) state.chats.delete(c.key); }
 function leaveChat() {
   const c = state.chat; if (!c) return;
@@ -1458,7 +1501,7 @@ function showChat(c) {
   if (c.session) state.unseen.delete(c.session);
   setChatHeader(c.title, c.cwd, c.session);
   $("prompt").value = c.draft || ""; $("prompt").dispatchEvent(new Event("input"));
-  renderShellCtx(); syncBusyUI(); renderSessions(); renderRuns(); setView("chat");
+  renderShellCtx(); syncBusyUI(); renderSessions(); renderRuns(); renderNotes(); setView("chat");
 }
 function rekeyChat(c, id) { state.chats.delete(c.key); c.key = id; c.session = id; state.chats.set(id, c); }
 function newChat(cwd) {
@@ -1758,18 +1801,26 @@ function showInitInfo(ev, pane = curPane()) {
 async function send() {
   const chat = state.chat, prompt = $("prompt").value.trim();
   if (!chat || !prompt || chat.busy || !chat.cwd) return;
-  const pane = chat.pane;
-  if (pane.querySelector(".empty")) pane.innerHTML = "";
   $("prompt").value = ""; $("prompt").style.height = ""; syncShellMode();
-  if (prompt.startsWith("!")) return runShell(prompt.slice(1).trim());
+  return runPrompt(chat, prompt);
+}
+/* send text to a chat, which doesn't have to be on screen: "!cmd" runs in the shell, anything else goes
+   to Claude. Resolves to true when it finished without an error. */
+async function runPrompt(chat, prompt) {
+  if (chat.pane.querySelector(".empty")) chat.pane.innerHTML = "";
+  return prompt.startsWith("!") ? runShell(prompt.slice(1).trim(), chat) : sendPrompt(chat, prompt);
+}
+async function sendPrompt(chat, prompt) {
+  const pane = chat.pane;
   // shell results since the last message go along with it, like Claude Code's own ! mode
-  const sentCtx = chat.shellCtx; chat.shellCtx = []; renderShellCtx();
+  const sentCtx = chat.shellCtx; chat.shellCtx = []; if (state.chat === chat) renderShellCtx();
   const fullPrompt = sentCtx.map(r => `<bash-input>${r.cmd}</bash-input>\n<bash-stdout>${r.out}</bash-stdout><bash-stderr>${r.err}</bash-stderr>`)
     .concat(prompt).join("\n\n");
   renderMessage("user", [{ type: "text", text: prompt }], undefined, pane); scrollDown(true, pane);
   setBusy(chat, true, "Starting Claude…");
 
   let live = null; // live streaming element for the in-progress assistant message
+  let resultOk = false;
   const ensureLive = () => {
     if (!live) { live = document.createElement("div"); live.className = "msg assistant live"; live.innerHTML = '<div class="role">Claude</div><div class="md"></div>'; live._text = ""; pane.appendChild(live); }
     return live;
@@ -1779,7 +1830,7 @@ async function send() {
       case "ui_run": chat.run = ev.run; break;
       case "system":
         if (ev.subtype === "init" && ev.session_id) {
-          if (!chat.session) { rekeyChat(chat, ev.session_id); if (state.chat === chat) setChatHeader(chat.title, chat.cwd, chat.session); }
+          if (!chat.session) { rekeyChat(chat, ev.session_id); if (state.chat === chat) { setChatHeader(chat.title, chat.cwd, chat.session); renderNotes(); } }
           showInitInfo(ev, pane);
           setBusy(chat, true, "Thinking…");
         }
@@ -1803,6 +1854,7 @@ async function send() {
         break;
       }
       case "result": {
+        resultOk = !ev.is_error;
         const secs = ev.duration_ms ? (ev.duration_ms / 1000).toFixed(1) + "s" : "";
         const cost = ev.total_cost_usd != null ? " · $" + ev.total_cost_usd.toFixed(4) : "";
         const line = document.createElement("div"); line.className = "meta-line";
@@ -1829,7 +1881,7 @@ async function send() {
   let delivered = false;
   try {
     const r = await fetch("/api/chat", { method: "POST", headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
-      body: JSON.stringify({ cwd: state.cwd, sessionId: state.session, prompt: fullPrompt, permissionMode: $("permMode").value, model: $("model").value, effort: $("effort").value }) });
+      body: JSON.stringify({ cwd: chat.cwd, sessionId: chat.session, prompt: fullPrompt, permissionMode: $("permMode").value, model: $("model").value, effort: $("effort").value }) });
     if (!r.ok) throw new Error((await r.json()).error);
     await readNdjson(r, ev => { if (ev.type === "system") delivered = true; handle(ev); });
   } catch (e) {
@@ -1840,6 +1892,8 @@ async function send() {
   chat.run = null; setBusy(chat, false); scrollDown(false, pane);
   finishedInBackground(chat, "Claude replied");
   refreshAfterRun(chat);
+  afterRun(chat);
+  return resultOk;
 }
 /* a chat finished while you were looking at another one: mark it, tell you, free it unless it has pending shell results */
 function finishedInBackground(chat, what) {
@@ -1880,8 +1934,8 @@ function renderShellCtx() {
     c.map(r => `<code data-tip="${tipAttr(r.cmd)}">$ ${esc(r.cmd)}</code>`).join("") +
     `<button class="ghost" style="font-size:12px" onclick="state.shellCtx=[];renderShellCtx()" data-tip="Don't send these results to Claude">✕ don't send</button>`;
 }
-async function runShell(cmd) {
-  const chat = state.chat; if (!cmd || !chat) return;
+async function runShell(cmd, chat = state.chat) {
+  if (!cmd || !chat) return false;
   const pane = chat.pane, where = chat.shellCwd || chat.cwd;
   const wrap = document.createElement("div"); wrap.className = "msg user";
   wrap.innerHTML = `<div class="role" data-tip="${tipAttr(`Ran ${new Date().toLocaleString()}\nin ${where}`)}">You · shell</div>`;
@@ -1929,6 +1983,8 @@ async function runShell(cmd) {
   }
   chat.run = null; setBusy(chat, false); scrollDown(false, pane);
   if (state.chat === chat) $("prompt").focus(); else finishedInBackground(chat, "Command finished");
+  afterRun(chat);
+  return !!exit && exit.code === 0;
 }
 
 function normalizeBlocks(content) {
@@ -2127,6 +2183,154 @@ async function checkNews() {
 loadNews();
 setInterval(loadNews, 5 * 60 * 1000);
 addEventListener("focus", loadNews);
+
+/* ---------- per-chat notes & to-dos, saved in workbench.db; ▶ runs one as a prompt, ⏭ queues it ---------- */
+state.notes = new Map();      // session id -> [note]
+state.noteCounts = {};        // session id -> {todo, notes, queued}
+let noteKind = "todo";
+const notesOpen = () => !$("notesPanel").hidden;
+async function loadNoteCounts() {
+  try { state.noteCounts = await api("/api/notes/counts"); } catch { return; }
+  renderSessions(); renderProjects(); renderNotesBtn();
+}
+function noteBadge(sid) {
+  const c = state.noteCounts[sid]; if (!c || !(c.todo || c.notes || c.queued)) return "";
+  const tip = [c.todo && `${c.todo} open to-do${c.todo === 1 ? "" : "s"}`, c.notes && `${c.notes} note${c.notes === 1 ? "" : "s"}`,
+    c.queued && `${c.queued} queued`].filter(Boolean).join(" · ");
+  return `<span class="badge nb" data-tip="${tipAttr(tip + "\nOpen the chat and click 📝 to see them")}">📝${c.todo || ""}</span>`;
+}
+function renderNotesBtn() {
+  const chat = state.chat, c = chat?.session && state.noteCounts[chat.session];
+  $("notesBtn").hidden = !chat;
+  $("notesCount").textContent = c?.todo ? c.todo : "";
+  $("notesBtn").classList.toggle("has", !!(c && (c.todo || c.notes)));
+  $("notesBtn").dataset.tip = c ? `Notes and to-dos for this chat: ${c.todo} open to-do${c.todo === 1 ? "" : "s"}, ${c.notes} note${c.notes === 1 ? "" : "s"}` : "Notes and to-dos for this chat";
+}
+function toggleNotes(force) {
+  const open = force ?? !notesOpen();
+  $("notesPanel").hidden = !open; store.set("notesOpen", open ? "1" : "");
+  if (open) { $("notesPanel").style.top = $("chat").querySelector(".col-head").offsetHeight + "px"; renderNotes(); $("noteInput").focus(); }
+}
+function setNoteKind(k) {
+  noteKind = k;
+  [...$("noteKindSeg").children].forEach(b => b.classList.toggle("on", b.dataset.k === k));
+  $("noteInput").placeholder = k === "todo" ? "Add a to-do…  (Enter adds · Shift+Enter new line)" : "Add a note…  (Enter adds · Shift+Enter new line)";
+}
+async function renderNotes() {
+  renderNotesBtn();
+  if (!notesOpen()) return;
+  $("notesPanel").style.top = $("chat").querySelector(".col-head").offsetHeight + "px";
+  const chat = state.chat, sid = chat?.session;
+  $("noteInput").disabled = !sid;
+  if (!sid) { $("queueBtn").hidden = true; $("notesList").innerHTML = '<div class="empty">Send a first message — notes are saved with the chat once it has an ID.</div>'; return; }
+  if (!state.notes.has(sid)) {
+    $("notesList").innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+    try { state.notes.set(sid, await api("/api/notes?sid=" + sid)); } catch (e) { $("notesList").innerHTML = `<div class="empty errbox">${esc(e.message)}</div>`; return; }
+    // "running" from before a page reload: that run was stopped with the page
+    for (const x of state.notes.get(sid)) if (x.status === "running" && !chat.noteRun) { x.status = "failed"; api("/api/note", { id: x.id, status: "failed" }).catch(() => {}); }
+    if (state.chat?.session !== sid) return;
+  }
+  const list = state.notes.get(sid);
+  const todos = list.filter(n => n.kind === "todo" && !n.done), notes = list.filter(n => n.kind === "note"), done = list.filter(n => n.kind === "todo" && n.done);
+  const queued = list.filter(n => n.status === "queued").length;
+  $("queueBtn").hidden = !queued || chat.queueActive;
+  $("queueBtn").textContent = `▶ Run queue (${queued})`;
+  $("queueBtn").dataset.tip = "Run the queued items one after another in this chat. A queue stops if an item fails.";
+  $("notesList").innerHTML =
+    (todos.length ? `<div class="notes-sec">To-do · ${todos.length}</div>` + todos.map(noteItem).join("") : "") +
+    (notes.length ? `<div class="notes-sec">Notes · ${notes.length}</div>` + notes.map(noteItem).join("") : "") +
+    (done.length ? `<details ${store.get("notesDoneOpen") ? "open" : ""} ontoggle="store.set('notesDoneOpen', this.open ? '1' : '')"><summary class="notes-sec">Done · ${done.length}</summary>${done.map(noteItem).join("")}</details>` : "") ||
+    '<div class="empty">Nothing yet. Add a to-do or a note above — handy for remembering where you were when you switch chats.</div>';
+}
+const NOTE_STATUS = {
+  queued: ["⏳ queued", "Runs after the current reply (or click ▶ Run queue)"], running: ["⟳ running", "Sent to Claude — waiting for the reply"],
+  applied: ["✓ applied", "Ran as a prompt and finished"], failed: ["✗ failed", "The run ended with an error"],
+};
+function noteItem(n) {
+  const st = NOTE_STATUS[n.status];
+  const ran = n.ran ? `\nLast run: ${new Date(n.ran * 1000).toLocaleString()}` : "";
+  return `<div class="note ${n.kind} ${n.done ? "done" : ""} ${n.status}" data-id="${n.id}">
+    ${n.kind === "todo" ? `<input type="checkbox" ${n.done ? "checked" : ""} onchange="setNote(${n.id}, {done: this.checked})" aria-label="Done" data-tip="${n.done ? "Mark as not done" : "Mark as done"}">` : `<span class="nk" data-tip="Note">📝</span>`}
+    <div class="nt" ondblclick="editNote(${n.id})" data-tip="${tipAttr(`Added ${new Date(n.created * 1000).toLocaleString()}${ran}\nDouble-click to edit`)}">${esc(n.text)}</div>
+    <div class="nacts">
+      ${st ? `<span class="nst ${n.status}" data-tip="${tipAttr(st[1] + ran)}">${st[0]}</span>` : ""}
+      ${n.status === "running" ? "" : `<button class="ghost" onclick="runNote(${n.id})" aria-label="Run now" data-tip="${tipAttr(n.text.startsWith("!") ? "Run this shell command in this chat now" : "Send this to Claude as a prompt in this chat now")}">▶</button>`}
+      ${n.status === "queued" ? `<button class="ghost" onclick="setNote(${n.id}, {status: ''})" aria-label="Unqueue" data-tip="Take it out of the queue">⏸</button>`
+        : n.status === "running" ? "" : `<button class="ghost" onclick="queueNote(${n.id})" aria-label="Queue" data-tip="Queue it: runs after the current reply, one by one (right away if Claude is idle)">⏭</button>`}
+      <button class="ghost" onclick="deleteNote(${n.id})" aria-label="Delete" data-tip="Delete">🗑</button>
+    </div></div>`;
+}
+const findNote = id => { for (const l of state.notes.values()) { const n = l.find(x => x.id === id); if (n) return n; } };
+async function addNote() {
+  const sid = state.chat?.session, text = $("noteInput").value.trim(); if (!sid || !text) return;
+  try {
+    const n = await api("/api/note", { sid, kind: noteKind, text });
+    (state.notes.get(sid) || state.notes.set(sid, []).get(sid)).push(n);
+    $("noteInput").value = ""; renderNotes(); loadNoteCounts();
+  } catch (e) { toast(e.message); }
+}
+$("noteInput").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); addNote(); } });
+async function setNote(id, fields) {
+  try {
+    const r = await api("/api/note", { id, ...fields });
+    Object.assign(findNote(id) || {}, r);
+    renderNotes(); loadNoteCounts();
+    return r;
+  } catch (e) { toast(e.message); }
+}
+async function deleteNote(id) {
+  const n = findNote(id); if (!n) return;
+  if (n.text.length > 40 && !confirm(`Delete this ${n.kind === "todo" ? "to-do" : "note"}?\n\n${n.text.slice(0, 200)}`)) return;
+  try {
+    await api("/api/note", { id, delete: true });
+    for (const l of state.notes.values()) { const i = l.findIndex(x => x.id === id); if (i >= 0) l.splice(i, 1); }
+    renderNotes(); loadNoteCounts();
+  } catch (e) { toast(e.message); }
+}
+function editNote(id) {
+  const n = findNote(id), el = document.querySelector(`.note[data-id="${id}"] .nt`); if (!n || !el || el.querySelector("textarea")) return;
+  const ta = document.createElement("textarea"); ta.value = n.text; el.replaceChildren(ta); ta.focus();
+  let done = false;
+  const finish = save => { if (done) return; done = true; const v = ta.value.trim(); if (save && v && v !== n.text) setNote(id, { text: v }); else renderNotes(); };
+  ta.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); finish(true); } else if (e.key === "Escape") finish(false); });
+  ta.addEventListener("blur", () => finish(true));
+}
+/* ▶ run now (queues it instead if the chat is busy) */
+async function runNote(id) {
+  const chat = state.chat, n = findNote(id); if (!chat || !n) return;
+  if (chat.busy) { toast("Claude is busy in this chat — queued it to run next"); return queueNote(id); }
+  runNoteNow(chat, n);
+}
+async function runNoteNow(chat, n) {
+  chat.noteRun = true;
+  await setNote(n.id, { status: "running" });
+  const ok = await runPrompt(chat, n.text);
+  chat.noteRun = false;
+  await setNote(n.id, { status: ok ? "applied" : "failed" });
+  continueQueue(chat, ok);
+}
+/* ⏭ queue: runs after the current reply, one by one; starts right away if the chat is idle */
+async function queueNote(id) {
+  const chat = state.chat; if (!chat) return;
+  await setNote(id, { status: "queued" });
+  chat.queueActive = true; renderNotes();
+  if (!chat.busy) continueQueue(chat, true);
+}
+function startQueue() { const chat = state.chat; if (!chat) return; chat.queueActive = true; renderNotes(); if (!chat.busy) continueQueue(chat, true); }
+function continueQueue(chat, lastOk) {
+  if (!chat.queueActive || chat.busy) return;
+  const next = (state.notes.get(chat.session) || []).filter(n => n.status === "queued").sort((a, b) => a.position - b.position || a.id - b.id)[0];
+  if (!lastOk && next) { chat.queueActive = false; toast(`Queue paused in “${chat.title}”: the last item failed`); }
+  else if (next) return runNoteNow(chat, next);
+  else { chat.queueActive = false; if (lastOk) toast(`Queue finished in “${chat.title}”`); }
+  if (state.chat === chat) renderNotes();
+  else if (!keepChat(chat)) dropChat(chat);
+}
+/* a manual message finished: if items were queued meanwhile, start them now */
+function afterRun(chat) { if (!chat.noteRun && chat.queueActive) setTimeout(() => continueQueue(chat, true)); }
+setNoteKind("todo");
+loadNoteCounts();
+if (store.get("notesOpen")) $("notesPanel").hidden = false;
 
 /* ---------- ⏻ restart the dashboard server (e.g. after server.py changed) ---------- */
 async function loadStatus() {

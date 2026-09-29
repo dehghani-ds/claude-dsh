@@ -75,6 +75,12 @@ CREATE TABLE IF NOT EXISTS notices (
   created REAL NOT NULL, read INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0,
   analysis TEXT);
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+-- per-chat to-dos and notes; status tracks running one as a prompt: '' | queued | running | applied | failed
+CREATE TABLE IF NOT EXISTS session_notes (
+  id INTEGER PRIMARY KEY, sid TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'todo', text TEXT NOT NULL,
+  done INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT '', position REAL NOT NULL DEFAULT 0,
+  created REAL NOT NULL, updated REAL NOT NULL, ran REAL);
+CREATE INDEX IF NOT EXISTS session_notes_sid ON session_notes(sid);
 """
 
 
@@ -198,6 +204,73 @@ def folder_set(b):
                 c.execute("INSERT OR IGNORE INTO folder_tags VALUES (?, ?)", (cwd, tid))
         _drop_unused_tags(c)
     return {"ok": True}
+
+
+NOTE_STATUSES = ("", "queued", "running", "applied", "failed")
+
+
+def _check_sid(sid):
+    if not re.fullmatch(r"[0-9a-fA-F-]{36}", sid or ""):
+        raise ValueError("bad session id")
+    return sid
+
+
+def notes_list(sid):
+    _check_sid(sid)
+    with DB_LOCK, db() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT * FROM session_notes WHERE sid=? ORDER BY position, id", (sid,))]
+
+
+def notes_counts():
+    """Per chat: open to-dos, notes, queued items — for the 📝 badges in the lists."""
+    with DB_LOCK, db() as c:
+        rows = c.execute("""SELECT sid, SUM(kind='todo' AND done=0), SUM(kind='note'), SUM(status='queued')
+                            FROM session_notes GROUP BY sid""").fetchall()
+    return {r[0]: {"todo": r[1] or 0, "notes": r[2] or 0, "queued": r[3] or 0} for r in rows}
+
+
+def note_save(b):
+    """Create ({sid, kind, text}), update ({id, text/done/status/position/ran}) or delete ({id, delete})."""
+    now = time.time()
+    with DB_LOCK, db() as c:
+        if b.get("id"):
+            nid = int(b["id"])
+            if b.get("delete"):
+                c.execute("DELETE FROM session_notes WHERE id=?", (nid,))
+                return {"ok": True}
+            sets, vals = [], []
+            if "text" in b:
+                text = (b["text"] or "").strip()
+                if not text or len(text) > 20000:
+                    raise ValueError("text must be 1-20000 characters")
+                sets.append("text=?"); vals.append(text)
+            if "done" in b:
+                sets.append("done=?"); vals.append(int(bool(b["done"])))
+            if "status" in b:
+                if b["status"] not in NOTE_STATUSES:
+                    raise ValueError("bad status")
+                sets.append("status=?"); vals.append(b["status"])
+                if b["status"] == "running":
+                    sets.append("ran=?"); vals.append(now)
+            if "position" in b:
+                sets.append("position=?"); vals.append(float(b["position"]))
+            if not sets:
+                raise ValueError("nothing to change")
+            c.execute(f"UPDATE session_notes SET {', '.join(sets)}, updated=? WHERE id=?", (*vals, now, nid))
+            r = c.execute("SELECT * FROM session_notes WHERE id=?", (nid,)).fetchone()
+            if not r:
+                raise ValueError("note not found")
+            return dict(r)
+        sid = _check_sid(b.get("sid"))
+        kind = b.get("kind") if b.get("kind") in ("todo", "note") else "todo"
+        text = (b.get("text") or "").strip()
+        if not text or len(text) > 20000:
+            raise ValueError("text must be 1-20000 characters")
+        pos = c.execute("SELECT COALESCE(MAX(position), 0) + 1 FROM session_notes WHERE sid=?", (sid,)).fetchone()[0]
+        cur = c.execute("INSERT INTO session_notes (sid, kind, text, position, created, updated) VALUES (?, ?, ?, ?, ?, ?)",
+                        (sid, kind, text, pos, now, now))
+        return dict(c.execute("SELECT * FROM session_notes WHERE id=?", (cur.lastrowid,)).fetchone())
 
 
 def chat_set(b):
@@ -1048,6 +1121,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, browse(q.get("path")))
             if u.path == "/api/status":
                 return self._send(200, server_status())
+            if u.path == "/api/notes":
+                return self._send(200, notes_list(q.get("sid")))
+            if u.path == "/api/notes/counts":
+                return self._send(200, notes_counts())
             if u.path == "/api/meta":
                 return self._send(200, meta_all())
             if u.path == "/api/notices":
@@ -1086,6 +1163,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, open_shell(b["cwd"]))
             if u.path == "/api/session/rename":
                 return self._send(200, rename_session(b.get("id"), b.get("title")))
+            if u.path == "/api/note":
+                return self._send(200, note_save(b))
             if u.path == "/api/chatmeta":
                 return self._send(200, chat_set(b))
             if u.path == "/api/folder":
