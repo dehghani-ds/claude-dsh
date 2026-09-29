@@ -2,6 +2,7 @@
 """Local web UI for Claude Code: browse sessions, chat, manage git worktrees.
 
 Run:  python3 server.py [--port 8765]
+      (or at login as a systemd user service: see workbench.service)
 Then open the printed URL. Binds to 127.0.0.1 only; every API call needs the
 per-run token that is embedded into the served page.
 """
