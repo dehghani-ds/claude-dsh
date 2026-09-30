@@ -48,6 +48,18 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 /* draggable dividers between the columns and on the notes panel (sizes are saved in this browser) */
 .resizer{position:absolute;top:0;bottom:0;width:9px;z-index:9;cursor:col-resize;touch-action:none;outline:none}
 .col>.resizer{right:-5px}
+/* sidebar header: the title shortens before any button is pushed out */
+#left .col-head{gap:2px;padding-left:8px;padding-right:8px}
+#left .col-head .brand{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#left .col-head button.ghost{padding:3px 5px;flex:none}
+/* folder list collapsed to a slim strip: only the top buttons stay, stacked (wide screens only) */
+@media (min-width:901px){
+  body.left-collapsed{grid-template-columns:48px var(--mid-w,340px) minmax(0,1fr)}
+  body.left-collapsed #left>*:not(.col-head){display:none!important}
+  body.left-collapsed #left .col-head{flex-direction:column;padding:10px 4px;gap:6px;border-bottom:0}
+  body.left-collapsed #left .col-head .brand{display:none}
+  body.left-collapsed #leftToggle{order:-1;margin-bottom:6px}
+}
 .notes>.resizer{left:-5px}
 .resizer::after{content:"";position:absolute;top:0;bottom:0;left:4px;width:1px;background:transparent;transition:background .12s,width .12s}
 .resizer:hover::after,.resizer:focus-visible::after,.resizer.active::after{background:var(--accent);width:3px;left:3px}
@@ -488,6 +500,7 @@ input.rename{font:inherit;font-weight:600;width:100%;padding:1px 6px;border-colo
 @media (max-width:900px){
   body{grid-template-columns:1fr;grid-template-rows:auto 1fr}
   .resizer{display:none}
+  #leftToggle{display:none}
   .mobile-nav{display:flex;gap:6px;padding:8px 16px;border-bottom:1px solid var(--border);background:var(--panel)}
   .mobile-nav button{flex:1}
   .col,#chat{display:none;border-right:0}
@@ -509,6 +522,7 @@ input.rename{font:inherit;font-weight:600;width:100%;padding:1px 6px;border-colo
   <div class="resizer" id="leftResizer" role="separator" aria-orientation="vertical" aria-label="Resize the folder sidebar" tabindex="0"
     data-tip="Drag to resize the folder sidebar · double-click to reset · or focus and use ← →"></div>
   <div class="col-head">
+    <button class="ghost" id="leftToggle" onclick="toggleLeft()" aria-label="Collapse the folder list" aria-expanded="true" data-tip="Collapse the folder list (Ctrl+B)">«</button>
     <div class="brand" data-tip="Local web UI for your Claude Code sessions.
 Reads ~/.claude/projects directly; groups &amp; tags are stored in workbench.db."><span>✳</span> Claude Workbench</div>
     <button class="ghost restart" id="restartBtn" onclick="restartServer()" aria-label="Restart server" data-tip="Restart the dashboard server">⏻</button>
@@ -2728,6 +2742,23 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") $("profileCa
 loadProfile();
 setInterval(() => loadProfile(), 2 * 60 * 1000);
 addEventListener("focus", () => loadProfile());
+
+/* ---------- collapse the folder list to a slim strip (« / » or Ctrl+B); remembered in this browser ---------- */
+function toggleLeft(force) {
+  const collapsed = force ?? !document.body.classList.contains("left-collapsed");
+  document.body.classList.toggle("left-collapsed", collapsed);
+  const b = $("leftToggle");
+  b.textContent = collapsed ? "»" : "«";
+  b.setAttribute("aria-expanded", String(!collapsed));
+  b.setAttribute("aria-label", collapsed ? "Show the folder list" : "Collapse the folder list");
+  b.dataset.tip = collapsed ? "Show the folder list (Ctrl+B)" : "Collapse the folder list (Ctrl+B)";
+  store.set("leftCollapsed", collapsed ? "1" : "");
+  hideTip();
+}
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "b" && innerWidth > 900) { e.preventDefault(); toggleLeft(); }
+});
+if (store.get("leftCollapsed")) toggleLeft(true);
 
 /* ---------- ⏻ restart the dashboard server (e.g. after server.py changed) ---------- */
 async function loadStatus() {
