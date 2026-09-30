@@ -607,6 +607,7 @@ Your chats are listed below under the worktree they ran in.">Git worktrees <span
     </div>
     <button class="ghost" id="copyBtn" data-tip="Copy a command that continues this exact chat in your terminal:
 cd <folder> && claude --resume <id>" onclick="copyResume()" hidden>⧉ Terminal cmd</button>
+    <button class="ghost" id="chatDesktopBtn" onclick="openInDesktop(state.session, state.cwd)" hidden aria-label="Open in Claude Desktop" data-tip="Open this chat in the Claude Desktop app (claude --desktop --resume)">🖥</button>
     <button class="ghost" id="chatShellBtn" data-tip="Open a terminal window in this chat's working folder" aria-label="Open shell here" onclick="openShell(state.cwd)" hidden>&gt;_</button>
     <button class="profile" id="profileBtn" onclick="toggleProfile(event)" aria-label="Your account and usage" aria-haspopup="dialog">
       <svg viewBox="0 0 36 36" aria-hidden="true"><circle class="ring-bg" cx="18" cy="18" r="16"/><circle class="ring" id="profileRing" cx="18" cy="18" r="16"/></svg>
@@ -1596,7 +1597,7 @@ function showChat(c) {
   if (c.session) state.unseen.delete(c.session);
   setChatHeader(c.title, c.cwd, c.session);
   $("prompt").value = c.draft || ""; $("prompt").dispatchEvent(new Event("input"));
-  renderShellCtx(); syncBusyUI(); renderSessions(); renderRuns(); renderNotes(); setView("chat");
+  renderShellCtx(); syncBusyUI(); renderSessions(); renderRuns(); renderNotes(); renderDesktopBtn(); setView("chat");
 }
 function rekeyChat(c, id) { state.chats.delete(c.key); c.key = id; c.session = id; state.chats.set(id, c); }
 function newChat(cwd) {
@@ -2405,6 +2406,7 @@ function sessionMenu(e, sid, key) {
     { icon: "⧉", label: "Copy resume command", tip: `cd ${info.cwd} && claude --resume ${sid}\nPaste it in a terminal to continue this chat there`,
       run: () => copyText(`cd ${q(info.cwd)} && claude --resume ${sid}`, "resume command") },
     { icon: ">_", label: "Open terminal in its folder", tip: info.cwd, run: () => openShell(info.cwd) },
+    ...(state.desktopOk ? [{ icon: "🖥", label: "Open in Claude Desktop", tip: "Continue this chat in the Claude Desktop app (claude --desktop --resume)", run: () => openInDesktop(sid, info.cwd) }] : []),
     { icon: "#", label: "Copy session ID", tip: sid, run: () => copyText(sid, "session ID") },
     ...(chat?.busy ? ["-", { icon: "■", label: "Stop the running reply", danger: true, tip: "Stop what Claude is doing in this chat",
       run: async () => { if (chat.run) { await api("/api/stop", { run: chat.run }); toast("Stopped"); } } }] : []),
@@ -2760,9 +2762,20 @@ document.addEventListener("keydown", e => {
 });
 if (store.get("leftCollapsed")) toggleLeft(true);
 
+/* ---------- open a chat in the Claude Desktop app (claude --desktop), when this claude supports it ---------- */
+function renderDesktopBtn() { $("chatDesktopBtn").hidden = !(state.desktopOk && state.chat?.session); }
+async function openInDesktop(sid, cwd) {
+  if (!sid || !cwd) return;
+  const c = state.chats.get(sid);
+  if (c?.busy && !confirm("Claude is still replying in this chat here. Open it in Claude Desktop anyway?\n\nThe reply keeps running in the dashboard; Desktop shows the chat as saved so far.")) return;
+  toast("Opening in Claude Desktop…");
+  try { await api("/api/open-desktop", { cwd, sessionId: sid }); toast("Opened in Claude Desktop"); }
+  catch (e) { toast("Couldn't open Claude Desktop: " + e.message); }
+}
+
 /* ---------- ⏻ restart the dashboard server (e.g. after server.py changed) ---------- */
 async function loadStatus() {
-  let st; try { st = await api("/api/status"); } catch (e) {
+  let st; try { st = await api("/api/status"); state.desktopOk = !!st.desktop; renderDesktopBtn(); } catch (e) {
     if (e.message === "not found") { $("restartBtn").classList.add("needed");
       $("restartBtn").dataset.tip = "⚠ The running server is older than this page and must be restarted once by hand:\n" +
         "systemctl --user restart workbench   (service)\nor Ctrl+C + python3 server.py   (terminal)"; }

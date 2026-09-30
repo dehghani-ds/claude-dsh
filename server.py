@@ -755,6 +755,39 @@ TERMINALS = (  # program, args; the folder is appended to the last arg (None = i
 )
 
 
+_desktop = {"t": 0, "ok": False}
+
+
+def desktop_supported():
+    """Does this claude have --desktop (open a session in the Claude Desktop app)? Checked at most every 10 min."""
+    if time.time() - _desktop["t"] > 600:
+        try:
+            r = subprocess.run([CLAUDE_BIN, "--help"], capture_output=True, text=True, timeout=30)
+            _desktop["ok"] = "--desktop" in r.stdout
+        except (OSError, subprocess.SubprocessError):
+            _desktop["ok"] = False
+        _desktop["t"] = time.time()
+    return _desktop["ok"]
+
+
+def open_desktop(cwd, sid=None):
+    """Open a chat (or a new one in `cwd`) in the Claude Desktop app via `claude --desktop [--resume id]`."""
+    if not os.path.isdir(cwd or ""):
+        raise ValueError(f"directory does not exist: {cwd}")
+    cmd = [CLAUDE_BIN, "--desktop"]
+    if sid:
+        find_session_file(sid)
+        cmd += ["--resume", sid]
+    p = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.PIPE, text=True, start_new_session=True)
+    try:  # it normally hands over to the app and exits; report it if it fails straight away
+        if p.wait(timeout=8) != 0:
+            raise RuntimeError((p.stderr.read() or "").strip()[-400:] or f"claude --desktop exited with {p.returncode}")
+    except subprocess.TimeoutExpired:
+        threading.Thread(target=p.stderr.read, daemon=True).start()  # still running: fine, just drain its output
+    return {"ok": True}
+
+
 def open_shell(cwd):
     if not os.path.isdir(cwd):
         raise ValueError(f"directory does not exist: {cwd}")
@@ -1251,7 +1284,7 @@ def server_status():
     with RUNS_LOCK:
         running = len(RUNS)
     return {"started": STARTED, "pid": os.getpid(), "codeChanged": code_mtime > STARTED, "codeTime": code_mtime,
-            "running": running, "service": _is_service()}
+            "running": running, "service": _is_service(), "desktop": desktop_supported()}
 
 
 def _is_service():
@@ -1397,6 +1430,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, worktree_apply(b))
             if u.path == "/api/worktree/remove":
                 return self._send(200, remove_worktree(b["cwd"], b["path"], b.get("force")))
+            if u.path == "/api/open-desktop":
+                return self._send(200, open_desktop(b.get("cwd"), b.get("sessionId")))
             if u.path == "/api/open-terminal":  # "open shell" button: a terminal window in that folder
                 return self._send(200, open_shell(b["cwd"]))
             if u.path == "/api/session/remove":
