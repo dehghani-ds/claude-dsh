@@ -335,6 +335,29 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .scroll>*,#msgs>*,.news-list>*,.dlg-list>*,.dlg-body>*{direction:ltr}
 /* news inbox */
 .bell{position:relative}
+/* profile badge (top right): initials inside a ring that fills with the 5-hour usage limit */
+.profile{position:relative;width:38px;height:38px;padding:0;border:0;background:transparent;border-radius:50%;flex:none;margin-left:4px}
+.profile svg{position:absolute;inset:0;width:38px;height:38px;transform:rotate(-90deg)}
+.profile circle{fill:none;stroke-width:3}
+.profile .ring-bg{stroke:var(--border)}
+.profile .ring{stroke:var(--ok);stroke-linecap:round;stroke-dasharray:0 200;transition:stroke-dasharray .6s,stroke .3s}
+.profile.warn .ring{stroke:var(--warn)}.profile.bad .ring{stroke:var(--err)}
+.profile .av{position:absolute;inset:5px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;
+  font:700 11.5px/1 system-ui,sans-serif;letter-spacing:.02em}
+.profile:hover .av{filter:brightness(1.08)}
+.profile.loading .ring-bg{stroke-dasharray:3 4}
+.pcard{position:fixed;z-index:40;width:300px;background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.2);padding:14px}
+.pcard .who{display:flex;gap:10px;align-items:center;margin-bottom:12px}
+.pcard .who .av{width:38px;height:38px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;flex:none}
+.pcard .who b{display:block}.pcard .who small{color:var(--muted);display:block;word-break:break-all}
+.pcard .lim{margin:10px 0}
+.pcard .lim .row{display:flex;justify-content:space-between;font-size:13px}
+.pcard .lim .row span:last-child{font-weight:700}
+.pcard .bar{height:7px;border-radius:4px;background:var(--panel2);margin:5px 0 3px;overflow:hidden}
+.pcard .bar i{display:block;height:100%;border-radius:4px;background:var(--ok)}
+.pcard .bar i.warn{background:var(--warn)}.pcard .bar i.bad{background:var(--err)}
+.pcard .lim small{color:var(--muted);font-size:12px}
+.pcard .foot{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12px;color:var(--muted)}
 /* ⋯ actions menu for a chat (also on right-click) */
 .more-btn{font-weight:700;letter-spacing:1px}
 #sessions .item{padding-right:36px}
@@ -380,6 +403,18 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 @media (hover:none){.note .nacts{opacity:1}}
 .note .nacts button{padding:1px 5px}
 .nst{font-size:11px;font-weight:600;padding:0 6px;border-radius:8px;border:1px solid currentColor;margin-right:3px;white-space:nowrap}
+.chk{font-size:11px;font-weight:600;padding:0 6px;border-radius:8px;margin-right:3px;white-space:nowrap;cursor:help}
+.chk.fits{color:var(--ok)}.chk.caution{color:var(--warn);border:1px solid var(--warn)}
+.chk.conflict{color:#fff;background:var(--err)}.chk.duplicate{color:var(--muted);border:1px solid var(--border)}
+.chk.checking{color:var(--muted)}
+.chk .spinner{width:8px;height:8px;border-width:1.5px;margin-right:3px;vertical-align:-1px}
+.note.conflict{box-shadow:inset 3px 0 0 var(--err)}
+.note .why{font-size:12px;margin-top:3px;color:var(--muted);white-space:normal}
+.note.conflict .why{color:var(--err)}
+.notes-opt{font-size:12px;color:var(--muted)}
+.note .nbadges{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;white-space:normal}
+.notes-head b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#queueBtn{white-space:nowrap;font-size:12.5px;padding:3px 9px}
 .nst.queued{color:var(--warn)}.nst.running{color:var(--accent)}.nst.applied{color:var(--ok)}.nst.failed{color:var(--err)}
 .note.running{box-shadow:inset 3px 0 0 var(--accent)}
 .notes details summary{cursor:pointer}
@@ -559,6 +594,10 @@ Your chats are listed below under the worktree they ran in.">Git worktrees <span
     <button class="ghost" id="copyBtn" data-tip="Copy a command that continues this exact chat in your terminal:
 cd <folder> && claude --resume <id>" onclick="copyResume()" hidden>⧉ Terminal cmd</button>
     <button class="ghost" id="chatShellBtn" data-tip="Open a terminal window in this chat's working folder" aria-label="Open shell here" onclick="openShell(state.cwd)" hidden>&gt;_</button>
+    <button class="profile" id="profileBtn" onclick="toggleProfile(event)" aria-label="Your account and usage" aria-haspopup="dialog">
+      <svg viewBox="0 0 36 36" aria-hidden="true"><circle class="ring-bg" cx="18" cy="18" r="16"/><circle class="ring" id="profileRing" cx="18" cy="18" r="16"/></svg>
+      <span class="av" id="profileInitials">·</span>
+    </button>
   </div>
   <div class="news-banner" id="newsBanner" hidden>
     <span>🔔</span><span id="newsBannerText"></span><span class="sp"></span>
@@ -579,6 +618,8 @@ cd <folder> && claude --resume <id>" onclick="copyResume()" hidden>⧉ Terminal 
         <button data-k="note" onclick="setNoteKind('note')" data-tip="A free-text note, e.g. what you were doing in this chat">📝 Note</button>
       </div>
       <textarea id="noteInput" rows="2" placeholder="Add a to-do…  (Enter adds · Shift+Enter new line)"></textarea>
+      <label class="check notes-opt" data-tip="When you add or queue a to-do, Claude (Haiku, no tools, not saved as a chat) reads this chat's recent conversation — and what it's doing right now — and says whether the to-do fits, should wait, conflicts, or is already done. Takes about 10 seconds.">
+        <input type="checkbox" id="autoCheck"> Check new to-dos against this chat's current work</label>
     </div>
     <div class="notes-list" id="notesList"></div>
   </aside>
@@ -1958,6 +1999,7 @@ function endRun(chat, st) {
   refreshAfterRun(chat);
   if (st.reattached) { reloadPane(chat); settleRunningNotes(chat, st.ok); }  // after reconnecting: redraw from the saved session; finish its to-do
   afterRun(chat);
+  loadProfile(true);  // usage changed: update the ring
   return st.ok;
 }
 /* a to-do was running when the page reloaded; its run kept going — record how it ended */
@@ -2352,7 +2394,33 @@ function sessionMenu(e, sid, key) {
     { icon: "#", label: "Copy session ID", tip: sid, run: () => copyText(sid, "session ID") },
     ...(chat?.busy ? ["-", { icon: "■", label: "Stop the running reply", danger: true, tip: "Stop what Claude is doing in this chat",
       run: async () => { if (chat.run) { await api("/api/stop", { run: chat.run }); toast("Stopped"); } } }] : []),
+    "-",
+    { icon: "🗑", label: "Remove chat…", danger: true, tip: "Remove it from the lists. The session file is moved to ~/.claude/workbench-trash, not deleted — you can undo right after.",
+      run: () => removeSession(sid, info.title) },
   ]);
+}
+/* remove a chat: its session file goes to ~/.claude/workbench-trash (recoverable), with Undo right after */
+async function removeSession(sid, title) {
+  const chat = state.chats.get(sid);
+  if (chat?.busy) return toast("Claude is still working in this chat — stop it first (⋯ → Stop)");
+  if (!confirm(`Remove “${title}”?\n\nIt disappears from the dashboard and from claude --resume. The session file is moved to ~/.claude/workbench-trash (not deleted), and you can undo right after.`)) return;
+  try { await api("/api/session/remove", { id: sid }); } catch (e) { return toast("Remove failed: " + e.message); }
+  if (chat) {
+    if (state.chat === chat) { leaveChat(); $("msgsEmpty").hidden = false; setChatHeader("No chat open", "", null); $("chatSub").textContent = ""; $("prompt").disabled = true; $("sendBtn").disabled = true; renderNotesBtn(); }
+    dropChat(chat);
+  }
+  state.unseen.delete(sid);
+  await refreshChatLists();
+  toastAction(`Removed “${title.slice(0, 50)}”`, "Undo", async () => {
+    try { await api("/api/session/restore", { id: sid }); toast("Restored"); } catch (e) { toast("Undo failed: " + e.message); }
+    await refreshChatLists();
+  });
+}
+async function refreshChatLists() {
+  state.projSessions.clear();
+  await loadProjects();
+  if (state.project) { try { state.sessions = await fetchSessions(); } catch { state.sessions = []; } renderSessions(); }
+  renderProjects();
 }
 
 /* ---------- per-chat notes & to-dos, saved in workbench.db; ▶ runs one as a prompt, ⏭ queues it ---------- */
@@ -2403,7 +2471,7 @@ async function renderNotes() {
   }
   const list = state.notes.get(sid);
   const todos = list.filter(n => n.kind === "todo" && !n.done), notes = list.filter(n => n.kind === "note"), done = list.filter(n => n.kind === "todo" && n.done);
-  const queued = list.filter(n => n.status === "queued").length;
+  const queued = list.filter(n => n.status === "queued" && !["conflict", "duplicate"].includes(n.check_verdict)).length;
   $("queueBtn").hidden = !queued || chat.queueActive;
   $("queueBtn").textContent = `▶ Run queue (${queued})`;
   $("queueBtn").dataset.tip = "Run the queued items one after another in this chat. A queue stops if an item fails.";
@@ -2417,20 +2485,52 @@ const NOTE_STATUS = {
   queued: ["⏳ queued", "Runs after the current reply (or click ▶ Run queue)"], running: ["⟳ running", "Sent to Claude — waiting for the reply"],
   applied: ["✓ applied", "Ran as a prompt and finished"], failed: ["✗ failed", "The run ended with an error"],
 };
+const CHECK = {
+  fits: ["✓ fits", "Fits this chat's current work"], caution: ["⚠ wait", "Should wait or depends on unfinished work"],
+  conflict: ["⛔ conflicts", "Conflicts with what this chat is doing or has decided"], duplicate: ["↺ duplicate", "This chat already did it or is doing it now"],
+};
 function noteItem(n) {
   const st = NOTE_STATUS[n.status];
+  const chk = checking.has(n.id) ? ["checking", `<span class="spinner"></span>checking`, "Claude is checking it against this chat…"]
+    : CHECK[n.check_verdict] && [n.check_verdict, CHECK[n.check_verdict][0], `${CHECK[n.check_verdict][1]}: ${n.check_reason}` +
+      (n.check_suggest ? `\n→ ${n.check_suggest}` : "") + (n.checked ? `\n\nChecked ${ago(n.checked)} · 🔍 to check again` : "")];
+  const why = !checking.has(n.id) && ["conflict", "caution", "duplicate"].includes(n.check_verdict) && !n.done && n.status !== "applied"
+    ? `<div class="why">${esc(n.check_reason)}${n.check_suggest ? " → " + esc(n.check_suggest) : ""}</div>` : "";
   const ran = n.ran ? `\nLast run: ${new Date(n.ran * 1000).toLocaleString()}` : "";
-  return `<div class="note ${n.kind} ${n.done ? "done" : ""} ${n.status}" data-id="${n.id}">
+  return `<div class="note ${n.kind} ${n.done ? "done" : ""} ${n.status} ${n.check_verdict === "conflict" && !n.done ? "conflict" : ""}" data-id="${n.id}">
     ${n.kind === "todo" ? `<input type="checkbox" ${n.done ? "checked" : ""} onchange="setNote(${n.id}, {done: this.checked})" aria-label="Done" data-tip="${n.done ? "Mark as not done" : "Mark as done"}">` : `<span class="nk" data-tip="Note">📝</span>`}
-    <div class="nt" ondblclick="editNote(${n.id})" data-tip="${tipAttr(`Added ${new Date(n.created * 1000).toLocaleString()}${ran}\nDouble-click to edit`)}">${esc(n.text)}</div>
+    <div class="nt" ondblclick="editNote(${n.id})" data-tip="${tipAttr(`Added ${new Date(n.created * 1000).toLocaleString()}${ran}\nDouble-click to edit`)}">${esc(n.text)}${chk || st ? `<div class="nbadges">${chk ? `<span class="chk ${chk[0]}" data-tip="${tipAttr(chk[2])}">${chk[1]}</span>` : ""}${st ? `<span class="nst ${n.status}" data-tip="${tipAttr(st[1] + ran)}">${st[0]}</span>` : ""}</div>` : ""}${why}</div>
     <div class="nacts">
-      ${st ? `<span class="nst ${n.status}" data-tip="${tipAttr(st[1] + ran)}">${st[0]}</span>` : ""}
+      ${n.kind === "todo" && !n.done && !checking.has(n.id) ? `<button class="ghost" onclick="checkNote(${n.id}, true)" aria-label="Check against this chat" data-tip="Ask Claude whether this fits what the chat is doing right now (about 10 s)">🔍</button>` : ""}
       ${n.status === "running" ? "" : `<button class="ghost" onclick="runNote(${n.id})" aria-label="Run now" data-tip="${tipAttr(n.text.startsWith("!") ? "Run this shell command in this chat now" : "Send this to Claude as a prompt in this chat now")}">▶</button>`}
       ${n.status === "queued" ? `<button class="ghost" onclick="setNote(${n.id}, {status: ''})" aria-label="Unqueue" data-tip="Take it out of the queue">⏸</button>`
         : n.status === "running" ? "" : `<button class="ghost" onclick="queueNote(${n.id})" aria-label="Queue" data-tip="Queue it: runs after the current reply, one by one (right away if Claude is idle)">⏭</button>`}
       <button class="ghost" onclick="deleteNote(${n.id})" aria-label="Delete" data-tip="Delete">🗑</button>
     </div></div>`;
 }
+/* ---- ask Claude whether a to-do clashes with the chat's current work ---- */
+const checking = new Map();  // note id -> promise of the running check
+$("autoCheck").checked = store.get("autoCheck") !== "0";
+$("autoCheck").addEventListener("change", e => store.set("autoCheck", e.target.checked ? "1" : "0"));
+function checkNote(id, manual) {
+  if (checking.has(id)) return checking.get(id);
+  const job = (async () => {
+    try {
+      const r = await api("/api/note/check", { id });
+      Object.assign(findNote(id) || {}, r);
+      if (r.check_verdict !== "fits") {
+        const n = findNote(id), label = CHECK[r.check_verdict]?.[0] || r.check_verdict;
+        toast(`${label} — “${(n?.text || "").slice(0, 60)}”: ${r.check_reason}`);
+      } else if (manual) toast("✓ Fits this chat's current work");
+      return r;
+    } catch (e) { toast("Check failed: " + e.message); }
+    finally { checking.delete(id); renderNotes(); }
+  })();
+  checking.set(id, job); renderNotes();
+  return job;
+}
+const staleCheck = n => !n.checked || Date.now() / 1000 - n.checked > 600;  // older than 10 minutes
+
 const findNote = id => { for (const l of state.notes.values()) { const n = l.find(x => x.id === id); if (n) return n; } };
 async function addNote() {
   const sid = state.chat?.session, text = $("noteInput").value.trim(); if (!sid || !text) return;
@@ -2438,6 +2538,7 @@ async function addNote() {
     const n = await api("/api/note", { sid, kind: noteKind, text });
     (state.notes.get(sid) || state.notes.set(sid, []).get(sid)).push(n);
     $("noteInput").value = ""; renderNotes(); loadNoteCounts();
+    if (noteKind === "todo" && $("autoCheck").checked) checkNote(n.id);
   } catch (e) { toast(e.message); }
 }
 $("noteInput").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); addNote(); } });
@@ -2483,6 +2584,10 @@ async function runNoteNow(chat, n) {
 /* ⏭ queue: runs after the current reply, one by one; starts right away if the chat is idle */
 async function queueNote(id) {
   const chat = state.chat; if (!chat) return;
+  const n = findNote(id);
+  if (n && ["conflict", "duplicate"].includes(n.check_verdict) &&
+      !confirm(`Claude flagged this to-do: ${CHECK[n.check_verdict][0]}\n\n${n.check_reason}${n.check_suggest ? "\n→ " + n.check_suggest : ""}\n\nQueue it anyway?`)) return;
+  if (n && $("autoCheck").checked && staleCheck(n)) checkNote(id);  // re-check against what the chat is doing now
   await setNote(id, { status: "queued" });
   chat.queueActive = true; renderNotes();
   if (!chat.busy) continueQueue(chat, true);
@@ -2490,10 +2595,21 @@ async function queueNote(id) {
 function startQueue() { const chat = state.chat; if (!chat) return; chat.queueActive = true; renderNotes(); if (!chat.busy) continueQueue(chat, true); }
 function continueQueue(chat, lastOk) {
   if (!chat.queueActive || chat.busy) return;
-  const next = (state.notes.get(chat.session) || []).filter(n => n.status === "queued").sort((a, b) => a.position - b.position || a.id - b.id)[0];
-  if (!lastOk && next) { chat.queueActive = false; toast(`Queue paused in “${chat.title}”: the last item failed`); }
-  else if (next) return runNoteNow(chat, next);
-  else { chat.queueActive = false; if (lastOk) toast(`Queue finished in “${chat.title}”`); }
+  const queued = (state.notes.get(chat.session) || []).filter(n => n.status === "queued").sort((a, b) => a.position - b.position || a.id - b.id);
+  // items Claude flagged as conflicting or already done are held back (still queued); the rest keep going
+  const flagged = n => ["conflict", "duplicate"].includes(n.check_verdict);
+  const next = queued.find(n => !flagged(n)), held = queued.filter(flagged);
+  if (!lastOk && queued.length) { chat.queueActive = false; toast(`Queue paused in “${chat.title}”: the last item failed`); }
+  else if (next && checking.has(next.id)) return checking.get(next.id).then(() => continueQueue(chat, true));  // wait for its check
+  else if (next) {
+    for (const h of held) if (!h.heldNoticed) { h.heldNoticed = true; toast(`Held back “${h.text.slice(0, 50)}”: ${h.check_reason} — running the rest (▶ runs it anyway)`); }
+    return runNoteNow(chat, next);
+  }
+  else {
+    chat.queueActive = false;
+    if (held.length) toast(`Queue done in “${chat.title}” — ${held.length} flagged item${held.length === 1 ? "" : "s"} held back: ${held.map(h => "“" + h.text.slice(0, 40) + "”").join(", ")} (▶ runs it anyway)`);
+    else if (lastOk) toast(`Queue finished in “${chat.title}”`);
+  }
   if (state.chat === chat) renderNotes();
   else if (!keepChat(chat)) dropChat(chat);
 }
@@ -2549,6 +2665,69 @@ initResizer("midResizer", "mid", 1);
 initResizer("notesResizer", "notes", -1);
 for (const name of Object.keys(PANES)) { const w = +store.get("w-" + name); if (w) setPaneWidth(name, w, false); }
 addEventListener("resize", () => { for (const name of Object.keys(PANES)) { const w = +store.get("w-" + name); if (w) setPaneWidth(name, w, false); } });
+
+/* ---------- profile + plan usage (top right): the ring shows the 5-hour limit ---------- */
+state.profile = null;
+const LIMIT_NAMES = { session: "5-hour session limit", weekly_all: "Weekly limit (all models)", weekly_opus: "Weekly limit (Opus)", weekly_sonnet: "Weekly limit (Sonnet)" };
+const limitName = l => LIMIT_NAMES[l.kind] || (l.group === "weekly" ? "Weekly limit" : l.kind.replace(/_/g, " "));
+const limitLevel = pct => pct >= 85 ? "bad" : pct >= 60 ? "warn" : "";
+function resetsIn(iso) {
+  const t = new Date(iso), mins = Math.round((t - Date.now()) / 60000);
+  if (!(mins > 0)) return "resetting now";
+  const when = t.toDateString() === new Date().toDateString() ? t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : t.toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const left = mins < 60 ? `${mins} min` : mins < 60 * 48 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${Math.round(mins / 1440)} days`;
+  return `resets ${when} (in ${left})`;
+}
+const initials = name => (name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join("") || "?";
+async function loadProfile(force) {
+  $("profileBtn").classList.add("loading");
+  try { state.profile = await api("/api/profile" + (force ? "?force=1" : "")); } catch { $("profileBtn").classList.remove("loading"); return; }
+  $("profileBtn").classList.remove("loading");
+  renderProfile();
+}
+function renderProfile() {
+  const p = state.profile; if (!p) return;
+  const sess = (p.limits || []).find(l => l.kind === "session");
+  const pct = sess ? Math.min(100, sess.percent) : 0;
+  $("profileInitials").textContent = initials(p.name || p.fullName);
+  $("profileRing").style.strokeDasharray = `${(pct / 100) * 2 * Math.PI * 16} 200`;
+  $("profileBtn").classList.remove("warn", "bad");
+  if (limitLevel(pct)) $("profileBtn").classList.add(limitLevel(pct));
+  $("profileBtn").dataset.tip = `${p.name || p.fullName || "Claude account"}${p.email ? " · " + p.email : ""}\n` +
+    (sess ? `5-hour limit: ${sess.percent}% used — ${resetsIn(sess.resets_at)}` : p.usageError ? "Usage unavailable: " + p.usageError : "Usage unknown") +
+    (p.limits || []).filter(l => l.kind !== "session").map(l => `\n${limitName(l)}: ${l.percent}%`).join("") + "\nClick for details";
+  if ($("profileCard")) fillProfileCard();
+}
+function toggleProfile(e) {
+  e.stopPropagation(); hideTip();
+  if ($("profileCard")) return $("profileCard").remove();
+  const card = document.createElement("div"); card.className = "pcard"; card.id = "profileCard"; card.setAttribute("role", "dialog");
+  hostFloating(card);
+  const r = $("profileBtn").getBoundingClientRect();
+  card.style.top = r.bottom + 6 + "px"; card.style.left = Math.max(8, Math.min(r.right - 300, innerWidth - 308)) + "px";
+  fillProfileCard();
+  loadProfile(true);  // fresh numbers when you open it
+}
+function fillProfileCard() {
+  const p = state.profile || {}, card = $("profileCard"); if (!card) return;
+  const limits = (p.limits || []).slice().sort((a, b) => (a.kind === "session" ? -1 : b.kind === "session" ? 1 : 0));
+  card.innerHTML = `<div class="who"><div class="av">${esc(initials(p.name || p.fullName))}</div>
+      <div style="min-width:0"><b>${esc(p.fullName || p.name || "Claude account")}</b>${p.email ? `<small>${esc(p.email)}</small>` : ""}${p.org ? `<small>${esc(p.org)}${p.role ? " · " + esc(p.role) : ""}</small>` : ""}</div></div>` +
+    (limits.length ? limits.map(l => `<div class="lim" data-tip="${tipAttr(limitName(l) + (l.is_active ? "\nThis is the limit that applies right now" : ""))}">
+      <div class="row"><span>${esc(limitName(l))}</span><span>${l.percent}%</span></div>
+      <div class="bar"><i class="${limitLevel(l.percent)}" style="width:${Math.min(100, l.percent)}%"></i></div>
+      <small>${esc(resetsIn(l.resets_at))}${l.severity === "critical" ? " · limit reached" : ""}</small></div>`).join("")
+      : `<div class="lim"><small>${esc(p.usageError ? "Usage unavailable: " + p.usageError : "Loading usage…")}</small></div>`) +
+    (p.extra && p.extra.is_enabled ? `<div class="lim"><div class="row"><span>Extra usage</span><span>${Math.round((p.extra.utilization || 0))}%</span></div><small>${p.extra.used_credits} of ${p.extra.monthly_limit} ${esc(p.extra.currency || "")} this month</small></div>` : "") +
+    `<div class="foot"><span>${p.usageAt ? "Updated " + ago(p.usageAt) : ""}${p.auth && p.auth !== "none" ? " · using " + esc(p.auth) : ""}</span>
+      <button class="ghost" onclick="loadProfile(true)" data-tip="Check usage again now (free — answered by Claude Code, no model call)">↻ Refresh</button></div>`;
+}
+document.addEventListener("mousedown", e => { const c = $("profileCard"); if (c && !c.contains(e.target) && !e.target.closest("#profileBtn")) c.remove(); }, true);
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("profileCard")?.remove(); });
+loadProfile();
+setInterval(() => loadProfile(), 2 * 60 * 1000);
+addEventListener("focus", () => loadProfile());
 
 /* ---------- ⏻ restart the dashboard server (e.g. after server.py changed) ---------- */
 async function loadStatus() {

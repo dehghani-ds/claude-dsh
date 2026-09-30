@@ -102,6 +102,12 @@ def db():
 def db_init():
     with DB_LOCK, db() as c:
         c.executescript(SCHEMA)
+        # columns added after the first release: add them to existing databases
+        have = {r[1] for r in c.execute("PRAGMA table_info(session_notes)")}
+        for col, decl in (("check_verdict", "TEXT NOT NULL DEFAULT ''"), ("check_reason", "TEXT NOT NULL DEFAULT ''"),
+                          ("check_suggest", "TEXT NOT NULL DEFAULT ''"), ("checked", "REAL")):
+            if col not in have:
+                c.execute(f"ALTER TABLE session_notes ADD COLUMN {col} {decl}")
 
 
 def _clean_name(name, what):
@@ -434,6 +440,45 @@ def find_session_file(session_id):
     for f in PROJECTS_DIR.glob(f"*/{session_id}.jsonl"):
         return f
     raise ValueError("session not found")
+
+
+TRASH_DIR = HOME / ".claude" / "workbench-trash"
+
+
+def session_remove(sid):
+    """Remove a chat from the lists by moving its session file (and its folder of subagent files, if any) to
+    ~/.claude/workbench-trash/<project>/. Nothing is deleted, so it can be restored."""
+    f = find_session_file(sid)
+    with RUNS_LOCK:
+        if any(r.session_id == sid and not r.done for r in CHAT_RUNS.values()):
+            raise ValueError("Claude is still working in this chat — stop it first")
+    dest = TRASH_DIR / f.parent.name
+    dest.mkdir(parents=True, exist_ok=True)
+    for src in (f, f.parent / sid):
+        if src.exists():
+            target = dest / src.name
+            if target.exists():  # an older copy in the trash: keep the newest
+                shutil.rmtree(target) if target.is_dir() else target.unlink()
+            shutil.move(str(src), str(target))
+    _meta_cache.pop(str(f), None)
+    _types_cache.pop(str(f), None)
+    return {"ok": True, "trash": str(dest)}
+
+
+def session_restore(sid):
+    """Undo session_remove: move the chat back from the trash."""
+    if not re.fullmatch(r"[0-9a-fA-F-]{36}", sid or ""):
+        raise ValueError("bad session id")
+    for f in TRASH_DIR.glob(f"*/{sid}.jsonl"):
+        home = PROJECTS_DIR / f.parent.name
+        home.mkdir(parents=True, exist_ok=True)
+        if (home / f.name).exists():
+            raise ValueError("a chat with this ID is already there")
+        for src in (f, f.parent / sid):
+            if src.exists():
+                shutil.move(str(src), str(home / src.name))
+        return {"ok": True}
+    raise ValueError("this chat isn't in the trash")
 
 
 def rename_session(sid, title):
@@ -999,6 +1044,91 @@ def notice_update(b):
     return {"ok": True}
 
 
+CHECK_VERDICTS = ("fits", "caution", "conflict", "duplicate")
+
+
+def session_context(sid, max_chars=7000):
+    """Recent conversation of a chat, plus what Claude is doing right now if a reply is running."""
+    lines = []
+    try:
+        for m in read_transcript(sid)["messages"][-40:]:
+            who = "USER" if m["role"] == "user" else "CLAUDE"
+            for b in m["blocks"]:
+                if b["type"] == "text" and b.get("text", "").strip():
+                    lines.append(f"{who}: {b['text'].strip()[:800]}")
+                elif b["type"] == "tool_use":
+                    lines.append(f"CLAUDE used {b.get('name')}: {json.dumps(b.get('input'))[:220]}")
+    except ValueError:
+        pass
+    history = "\n".join(lines)[-max_chars:]
+    live = ""
+    with RUNS_LOCK:
+        run = next((r for r in CHAT_RUNS.values() if r.session_id == sid and not r.done), None)
+    if run:
+        with run.cond:
+            events = list(run.events)
+        parts, partial = [], ""
+        for ev in events:
+            t = ev.get("type")
+            if t == "assistant":
+                partial = ""
+                for b in (ev.get("message") or {}).get("content") or []:
+                    if b.get("type") == "text" and b.get("text", "").strip():
+                        parts.append("CLAUDE: " + b["text"].strip()[:800])
+                    elif b.get("type") == "tool_use":
+                        parts.append(f"CLAUDE is using {b.get('name')}: {json.dumps(b.get('input'))[:220]}")
+            elif t == "stream_event":
+                d = (ev.get("event") or {}).get("delta") or {}
+                if d.get("type") == "text_delta":
+                    partial += d.get("text", "")
+        if partial.strip():
+            parts.append("CLAUDE (writing now): " + partial.strip()[-800:])
+        live = f"The session is RUNNING right now. The user asked: {run.prompt[:600]!r}\n" + "\n".join(parts)[-3000:]
+    return history, live
+
+
+def note_check(nid):
+    """Ask Claude (Haiku, no tools, not saved) whether running this to-do next would clash with what the
+    chat is doing or has decided. Stores and returns {verdict, reason, suggestion}."""
+    with DB_LOCK, db() as c:
+        n = c.execute("SELECT * FROM session_notes WHERE id=?", (nid,)).fetchone()
+        if not n:
+            raise ValueError("note not found")
+        queued = [r["text"] for r in c.execute(
+            "SELECT text FROM session_notes WHERE sid=? AND status='queued' AND id<>? ORDER BY position, id", (n["sid"], nid))]
+    history, live = session_context(n["sid"])
+    prompt = (
+        "A developer keeps a to-do list next to an ongoing Claude Code session and wants to send one item to that "
+        "session as its NEXT prompt. Judge whether that would clash with what the session is doing or has decided.\n\n"
+        f"## Recent conversation (oldest first, shortened)\n{history or '(no messages yet)'}\n\n"
+        + (f"## In progress right now\n{live}\n\n" if live else "")
+        + ("## Already queued to run before it\n" + "\n".join(f"{i + 1}. {q[:300]}" for i, q in enumerate(queued)) + "\n\n" if queued else "")
+        + f"## The to-do to check\n{n['text'][:2000]}\n\n"
+        "Answer with ONLY a JSON object, no other text:\n"
+        '{"verdict": "fits" | "caution" | "conflict" | "duplicate", "reason": "<one short sentence>", "suggestion": "<one short sentence, or empty>"}\n'
+        "- fits: independent of the current work, or its natural next step\n"
+        "- caution: depends on work that isn't finished, or should wait until the current turn ends\n"
+        "- conflict: contradicts, undoes or competes with the current direction or a decision made in the conversation "
+        "(e.g. changes the same code another way, reverses an agreed choice)\n"
+        "- duplicate: the session already did this or is doing it now")
+    p = subprocess.run([CLAUDE_BIN, "-p", "--model", ANALYZE_MODEL, "--tools", "", "--no-session-persistence"],
+                       input=prompt, capture_output=True, text=True, timeout=120, cwd=str(HERE))
+    if p.returncode != 0 or not p.stdout.strip():
+        raise RuntimeError((p.stderr or p.stdout).strip()[-400:] or "claude failed")
+    m = re.search(r"\{.*\}", p.stdout, re.S)
+    try:
+        ans = json.loads(m.group(0)) if m else {}
+    except ValueError:
+        ans = {}
+    verdict = ans.get("verdict") if ans.get("verdict") in CHECK_VERDICTS else "caution"
+    reason = str(ans.get("reason") or ("Couldn't read Claude's answer: " + p.stdout.strip()[:200]))[:400]
+    suggestion = str(ans.get("suggestion") or "")[:400]
+    with DB_LOCK, db() as c:
+        c.execute("UPDATE session_notes SET check_verdict=?, check_reason=?, check_suggest=?, checked=? WHERE id=?",
+                  (verdict, reason, suggestion, time.time(), nid))
+        return dict(c.execute("SELECT * FROM session_notes WHERE id=?", (nid,)).fetchone())
+
+
 def notice_analyze(nid):
     """Ask Claude (no tools, not saved as a session) what a notice means for this dashboard."""
     with DB_LOCK, db() as c:
@@ -1072,6 +1202,47 @@ def list_runs():
         for rid in [r for r, run in CHAT_RUNS.items() if run.done and now - run.ended > RUN_KEEP]:
             del CHAT_RUNS[rid]
         return [run.info() for run in CHAT_RUNS.values()]
+
+
+_usage = {"t": 0, "data": None, "error": None}
+_usage_lock = threading.Lock()
+
+
+def profile_info(force=False):
+    """Who is logged in to Claude Code (from ~/.claude.json) and the plan usage limits from /usage.
+    /usage is answered locally by Claude Code (no model call), so it costs nothing; cached for a minute."""
+    acct = {}
+    try:
+        a = json.loads((HOME / ".claude.json").read_text()).get("oauthAccount") or {}
+        acct = {"name": a.get("displayName") or a.get("fullName"), "fullName": a.get("fullName"), "email": a.get("emailAddress"),
+                "org": a.get("organizationName"), "role": a.get("organizationRole"), "billing": a.get("billingType"),
+                "extraUsage": a.get("hasExtraUsageEnabled")}
+    except (OSError, ValueError):
+        pass
+    with _usage_lock:
+        if force or time.time() - _usage["t"] > 60:
+            data, err = None, None
+            try:
+                p = subprocess.run([CLAUDE_BIN, "-p", "--output-format", "stream-json", "--verbose", "--no-session-persistence"],
+                                   input="/usage", capture_output=True, text=True, timeout=60, cwd=str(HOME))
+                auth = None
+                for line in p.stdout.splitlines():
+                    try:
+                        ev = json.loads(line)
+                    except ValueError:
+                        continue
+                    if ev.get("type") == "system" and ev.get("subtype") == "init":
+                        auth = ev.get("apiKeySource")
+                    rep = ev.get("usage_report")
+                    if rep:
+                        rl = rep.get("rate_limits") or {}
+                        data = {"limits": rl.get("limits") or [], "extra": rl.get("extra_usage"), "auth": auth}
+                if data is None:
+                    err = (p.stderr or p.stdout).strip()[-300:] or "no usage information in /usage"
+            except (OSError, subprocess.SubprocessError) as e:
+                err = str(e)
+            _usage.update(t=time.time(), data=data or _usage["data"], error=err)
+        return {**acct, **(_usage["data"] or {"limits": []}), "usageAt": _usage["t"], "usageError": _usage["error"]}
 
 
 def server_status():
@@ -1177,6 +1348,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, repo_info(q["cwd"]))
             if u.path == "/api/browse":
                 return self._send(200, browse(q.get("path")))
+            if u.path == "/api/profile":
+                return self._send(200, profile_info(q.get("force") == "1"))
             if u.path == "/api/status":
                 return self._send(200, server_status())
             if u.path == "/api/notes":
@@ -1226,10 +1399,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, remove_worktree(b["cwd"], b["path"], b.get("force")))
             if u.path == "/api/open-terminal":  # "open shell" button: a terminal window in that folder
                 return self._send(200, open_shell(b["cwd"]))
+            if u.path == "/api/session/remove":
+                return self._send(200, session_remove(b.get("id")))
+            if u.path == "/api/session/restore":
+                return self._send(200, session_restore(b.get("id")))
             if u.path == "/api/session/rename":
                 return self._send(200, rename_session(b.get("id"), b.get("title")))
             if u.path == "/api/note":
                 return self._send(200, note_save(b))
+            if u.path == "/api/note/check":
+                return self._send(200, note_check(int(b["id"])))
             if u.path == "/api/chatmeta":
                 return self._send(200, chat_set(b))
             if u.path == "/api/folder":
