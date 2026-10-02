@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude Workbench</title>
-<link rel="icon" id="favicon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16.0 13.8L16.0 2.8M17.2 14.2L22.4 6.5M17.8 14.8L27.4 8.6M18.2 16.1L28.0 16.4M18.0 17.0L27.7 21.7M17.0 18.0L21.1 26.0M16.0 18.2L15.8 29.8M15.0 17.9L10.5 26.4M14.0 17.0L4.5 21.6M13.8 16.1L4.4 16.6M14.1 14.8L4.6 8.9M14.9 14.1L9.7 5.5' stroke='%23D97757' stroke-width='3.4' stroke-linecap='round' fill='none'/><circle cx='16' cy='16' r='3.4' fill='%23D97757'/></svg>">
+<link rel="icon" id="favicon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='7 4.5 74 74' shape-rendering='crispEdges'><path fill='%23D97757' d='M13 12h61v44H13zM7 27h74v14H7zM13 56h7v15h-7zM27 56h6v15h-6zM54 56h6v15h-6zM68 56h6v15h-6z'/><path fill='%23000' d='M20 26h7v8h-7zM61 26h7v8h-7z'/></svg>">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <style>
@@ -311,6 +311,12 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .item{position:relative}
 .item .edit{position:absolute;right:8px;top:7px;opacity:0}
 .item .edit.shell{right:44px}
+.item .edit.pin.at2{right:44px}.item .edit.pin.at3{right:80px}
+/* pinned: groups first, folders first in their group, chats first in their folder */
+.pinmark{font-size:11px;margin-right:4px;flex:none;cursor:pointer}
+.group-head .gpin{padding:0 4px;font-size:11px;opacity:0;flex:none}
+.group-head:hover .gpin,.group-head:focus-within .gpin{opacity:.8}
+@media (hover:none){.group-head .gpin{opacity:.8}}
 .item:hover .edit,.item:focus-within .edit{opacity:1}
 @media (hover:none){.item .edit{opacity:1}}
 .item.dragging{opacity:.4}
@@ -347,6 +353,31 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .scroll>*,#msgs>*,.news-list>*,.dlg-list>*,.dlg-body>*{direction:ltr}
 /* news inbox */
 .bell{position:relative}
+/* console-style status chips under the message box: model · effort · mode */
+.cbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.cchip{display:inline-flex;align-items:center;gap:6px;font:12.5px/1.2 var(--mono);padding:5px 10px;border-radius:7px;background:var(--panel2);
+  border:1px solid var(--border);color:var(--text);white-space:nowrap}
+.cchip:hover{border-color:var(--accent)}
+.cchip .k{color:var(--muted)}
+.cchip .dots{letter-spacing:1px;color:var(--accent)}
+.cchip .dots i{font-style:normal;color:var(--border)}
+.cchip.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,transparent)}
+.cchip.bad{color:var(--err);border-color:var(--err)}
+.cchip:disabled{opacity:.6;cursor:default}
+.picker{position:fixed;z-index:40;width:360px;max-height:70vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:12px;
+  box-shadow:0 10px 30px rgba(0,0,0,.22);padding:6px;font-size:13.5px}
+.picker .ph{padding:6px 10px 8px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);margin-bottom:4px}
+.picker .ph b{display:block;color:var(--text);font-size:13px;margin-bottom:2px}
+.picker .opt{display:grid;grid-template-columns:18px 1fr auto;gap:2px 8px;width:100%;text-align:left;border:0;background:transparent;border-radius:8px;padding:7px 10px}
+.picker .opt:hover,.picker .opt:focus-visible{background:var(--panel2);outline:none}
+.picker .opt.on{background:var(--accent-weak)}
+.picker .opt .ck{color:var(--accent);font-weight:700}
+.picker .opt .nm{font-weight:600}
+.picker .opt .ds{grid-column:2/4;color:var(--muted);font-size:12.5px}
+.picker .opt .nt{grid-column:2/4;color:var(--warn);font-size:12px}
+.picker .opt .bd{font-size:11px;padding:0 7px;border-radius:9px;border:1px solid var(--border);color:var(--muted);align-self:center;white-space:nowrap}
+.picker .opt .bd.rec{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 50%,transparent)}
+.picker details summary{cursor:pointer;padding:7px 10px;color:var(--muted);font-size:12.5px}
 /* profile badge (top right): initials inside a ring that fills with the 5-hour usage limit */
 .profile{position:relative;width:38px;height:38px;padding:0;border:0;background:transparent;border-radius:50%;flex:none;margin-left:4px}
 .profile svg{position:absolute;inset:0;width:38px;height:38px;transform:rotate(-90deg)}
@@ -370,6 +401,37 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .pcard .bar i.warn{background:var(--warn)}.pcard .bar i.bad{background:var(--err)}
 .pcard .lim small{color:var(--muted);font-size:12px}
 .pcard .foot{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12px;color:var(--muted)}
+.pcard .tokbtn{width:100%;margin-top:10px}
+/* token usage: three window tiles (they pick the window for everything below), a breakdown, top chats, a 7-day chart */
+#tokDlg{width:min(720px,94vw)}
+#tokDlg .dlg-body{max-height:74vh;gap:16px}
+#tokDlg .dlg-body.stale{opacity:.55;transition:opacity .2s}
+.tok-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.tok-tile{text-align:left;display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:10px;background:var(--panel)}
+.tok-tile.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);background:var(--accent-weak)}
+.tok-tile .lbl{font-size:12px;color:var(--muted);font-weight:600}
+.tok-tile .big{font-size:24px;font-weight:700;line-height:1.2}
+.tok-tile small{font-size:11.5px;color:var(--muted);line-height:1.35}
+.tok-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+.tok-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tok-tbl td{padding:4px 0;border-bottom:1px solid var(--border)}
+.tok-tbl td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;padding-left:10px}
+.tok-tbl td.sub{color:var(--muted);font-size:12px;text-align:right;white-space:nowrap;padding-left:8px;font-variant-numeric:tabular-nums}
+.tok-tbl tr.here td{font-weight:700}
+.tok-tbl .meter{height:4px;border-radius:2px;background:var(--accent);margin-top:3px;min-width:2px}
+.tok-chat{cursor:pointer}.tok-chat:hover td{background:var(--panel2)}
+.tok-chat .t{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.tok-chat small{color:var(--muted);font-size:11.5px}
+.tok-chart{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;align-items:end;height:150px;padding-top:18px;border-bottom:1px solid var(--border)}
+.tok-chart .tbar{position:relative;height:100%;display:flex;align-items:flex-end;justify-content:center;border:0;outline:none;cursor:default}
+.tok-chart .tbar i{display:block;width:min(24px,70%);background:var(--accent);border-radius:4px 4px 0 0;min-height:2px}
+.tok-chart .tbar:hover i,.tok-chart .tbar:focus-visible i{filter:brightness(1.12)}
+.tok-chart .tbar:focus-visible{box-shadow:0 0 0 2px var(--accent);border-radius:4px}
+.tok-chart .tbar b{position:absolute;font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;font-variant-numeric:tabular-nums}
+.tok-days{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;font-size:11.5px;color:var(--muted);text-align:center;margin-top:4px}
+.tok-days .today{color:var(--text);font-weight:700}
+.tok-note{font-size:12px;color:var(--muted)}
+@media (max-width:640px){.tok-tiles,.tok-cols{grid-template-columns:1fr}.tok-tile .big{font-size:20px}}
 /* ⋯ actions menu for a chat (also on right-click) */
 .more-btn{font-weight:700;letter-spacing:1px}
 #sessions .item{padding-right:36px}
@@ -429,6 +491,9 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 #queueBtn{white-space:nowrap;font-size:12.5px;padding:3px 9px}
 .nst.queued{color:var(--warn)}.nst.running{color:var(--accent)}.nst.applied{color:var(--ok)}.nst.failed{color:var(--err)}
 .note.running{box-shadow:inset 3px 0 0 var(--accent)}
+/* already sent to the chat: faded and listed last, so what's still to do stays on top */
+.note.applied{opacity:.5;transition:opacity .15s}
+.note.applied:hover,.note.applied:focus-within{opacity:.85}
 .notes details summary{cursor:pointer}
 .badge.nb{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 55%,transparent);margin:0 6px 0 0}
 #notesBtn.has{color:var(--accent);font-weight:600}
@@ -538,6 +603,7 @@ Start with # to match tags only, e.g. #java" oninput="renderProjects()">
       <button data-v="grouped" onclick="setProjView('grouped')" data-tip="Grouped view: folders under their group headings" aria-label="Grouped view">▦</button>
       <button data-v="list" onclick="setProjView('list')" data-tip="List view: all folders in one list, most recently used first" aria-label="List view">☰</button>
     </div>
+    <button class="ghost" id="groupFoldAll" onclick="foldAllGroups()" data-tip="Fold or unfold every group" aria-label="Fold or unfold every group" hidden>⇕</button>
   </div>
   <div style="padding:6px 12px 8px;display:flex;gap:6px">
     <button style="flex:1" onclick="openBrowse()" data-tip="Pick any folder on your computer and start a new Claude chat there">＋ Chat in folder…</button>
@@ -644,6 +710,12 @@ cd <folder> && claude --resume <id>" onclick="copyResume()" hidden>⧉ Terminal 
       <div class="shell-ctx" id="shellCtx" hidden></div>
       <textarea id="prompt" data-tip="Enter sends · Shift+Enter adds a new line&#10;Start with ! to run a shell command, e.g. !git status" placeholder="Message Claude…  (Enter to send · Shift+Enter new line · ! for shell)" disabled></textarea>
       <div class="bar">
+        <div class="cbar" role="toolbar" aria-label="Model, effort and permission mode">
+          <button class="cchip" id="modelChip" onclick="pickModel(this)" aria-haspopup="listbox"></button>
+          <button class="cchip" id="effortChip" onclick="pickEffort(this)" aria-haspopup="listbox"></button>
+          <button class="cchip" id="modeChip" onclick="pickMode(this)" aria-haspopup="listbox"></button>
+        </div>
+        <span hidden>
         <label data-tip="Permission mode: what Claude may do without asking.
 In this UI Claude can't ask you, so anything not allowed is denied.">Mode
           <select id="permMode" data-tip="">
@@ -674,6 +746,7 @@ Since Claude Code 2.1.280 this is respected in -p mode for every model.">Effort
             <option value="max" title="Maximum thinking — slowest and most expensive">max</option>
           </select>
         </label>
+        </span>
         <span class="sp"></span>
         <span id="status" data-tip="What Claude is doing right now" style="font-size:12px;color:var(--muted)"></span>
         <button id="stopBtn" class="danger" data-tip="Stop Claude's current reply (the partial answer is kept in the session)" hidden onclick="stopRun()">■ Stop</button>
@@ -786,6 +859,12 @@ Empty = worktree-<name>" placeholder="" list="wtBranchList" autocomplete="off">
     <div class="mrow"><input id="newGroupName" data-tip="Name of a new group, then press Enter" placeholder="New group name" maxlength="40" onkeydown="if(event.key==='Enter')addGroupFromManage()"><button onclick="addGroupFromManage()" data-tip="Create this group">Add</button></div>
     <h3 data-tip="Tags are labels on folders. Unused tags are removed automatically.">Tags</h3><div id="manageTags"></div>
   </div>
+</dialog>
+<dialog id="tokDlg" aria-labelledby="tokTitle">
+  <div class="dlg-head"><b id="tokTitle" style="flex:1">📊 Token usage</b>
+    <button class="ghost" onclick="loadTokens()" data-tip="Count again now (reads the session files on this machine — no model call)">↻ Refresh</button>
+    <button class="ghost" onclick="tokDlg.close()" data-tip="Close (Esc)" aria-label="Close">✕</button></div>
+  <div class="dlg-body" id="tokBody"><div class="empty"><span class="spinner"></span></div></div>
 </dialog>
 <dialog id="newsDlg">
   <div class="dlg-head"><b style="flex:1">🔔 Claude Code updates</b><button class="ghost" onclick="newsDlg.close()" data-tip="Close (Esc)" aria-label="Close">✕</button></div>
@@ -923,6 +1002,14 @@ async function reloadMeta() {
 const folderOf = cwd => state.meta.folders[cwd] || { group: null, tags: [] };
 const tagById = id => state.meta.tags.find(t => t.id === id);
 const chatOf = sid => state.meta.chats?.[sid] || { group: null, tags: [] };
+const pinFirst = (list, pinned) => [...list.filter(pinned), ...list.filter(x => !pinned(x))];  // keeps each part's order
+const chatPinned = c => !!state.meta.chats?.[c.id]?.pinned;
+async function setPin(kind, key, pinned) {
+  const body = { kind, pinned, ...(kind === "group" ? { id: key } : kind === "folder" ? { cwd: key } : { sid: key }) };
+  try { await api("/api/pin", body); await reloadMeta(); } catch (e) { toast(e.message); }
+}
+const pinMark = (kind, key, where) => `<span class="pinmark" data-tip="${tipAttr(`Pinned to the top of ${where}\nClick to unpin`)}" role="button" tabindex="0" aria-label="Unpin"
+  onclick='event.stopPropagation();setPin(${JSON.stringify(kind)}, ${JSON.stringify(key).replace(/'/g, "&#39;")}, false)'>📌</span>`;
 const tagUses = id => Object.values(state.meta.folders).filter(f => f.tags.includes(id)).length +
   Object.values(state.meta.chats || {}).filter(c => c.tags.includes(id)).length;
 const ICON_DIR = `<svg class="ficon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1.5 4a1 1 0 0 1 1-1h3.7l1.5 1.6h5.8a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/></svg>`;
@@ -1023,7 +1110,7 @@ function knownChats(p) {
   const seen = new Set(list.map(c => c.id));
   const extra = Object.entries(state.meta.chats || {}).filter(([sid, c]) => c.project === p.key && !seen.has(sid))
     .map(([sid, c]) => ({ id: sid, title: c.title, mtime: c.mtime, cwd: c.cwd }));
-  return [...list, ...extra];
+  return pinFirst([...list, ...extra], chatPinned);
 }
 /* a directory is shown if it matches, or if some of its chats do (then only those are listed) */
 function dirEntry(p) {
@@ -1079,7 +1166,7 @@ function treeChat(key, c, loose) {
     `\nClick to open · double-click to rename · ⋯ or right-click for more${loose ? "" : " · drag onto a group to add it there"}`;
   return `<div class="pchat ${loose ? "loose" : ""} ${state.session === c.id ? "active" : ""}" draggable="true" data-sid="${esc(c.id)}"
       onclick='sessionClick(event, ${J(c.id)}, ${J(key)})' oncontextmenu='sessionMenu(event, ${J(c.id)}, ${J(key)})' ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')" data-tip="${tipAttr(tip)}">
-    <div class="prow"><span class="pt">${ICON_CHAT}${chatBadge(c.id)}${noteBadge(c.id)}<span class="ttl">${esc(c.title || "(untitled)")}</span></span>
+    <div class="prow"><span class="pt">${chatPinned(c) && !loose ? pinMark("chat", c.id, "its folder") : ""}${ICON_CHAT}${chatBadge(c.id)}${noteBadge(c.id)}<span class="ttl">${esc(c.title || "(untitled)")}</span></span>
       <span class="pa">${c.mtime ? ago(c.mtime) : ""}</span>
       <button class="ghost edit more-btn" aria-label="More actions" aria-haspopup="menu" data-tip="More: rename, group &amp; tags, notes, copy resume command… (or right-click the chat)" onclick='sessionMenu(event, ${J(c.id)}, ${J(key)})'>⋯</button></div>
     ${folder ? `<div class="ps">${esc(folder)}</div>` : ""}
@@ -1110,7 +1197,8 @@ function projectItem(p, only) {
       onclick="clickProject('${esc(p.key)}')" ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')">
     <button class="ghost edit" data-tip="Set group and tags for this folder" aria-label="Edit group and tags" onclick='event.stopPropagation();openFolderDlg(${JSON.stringify(p.cwd)})'>🏷</button>
     ${p.exists ? `<button class="ghost edit shell" data-tip="${SHELL_TIP}" aria-label="Open shell here" onclick='event.stopPropagation();openShell(${JSON.stringify(p.cwd)})'>&gt;_</button>` : ""}
-    <div class="t"><span class="pcaret" data-tip="${open ? "Hide" : "Show"} chats" onclick="event.stopPropagation();toggleProjOpen('${esc(p.key)}')">▶</span>${ICON_DIR}${[...state.chats.values()].some(c => c.busy && c.cwd === p.cwd) ? `<span class="badge run" data-tip="A chat in this folder is running"><span class="spinner"></span>working</span>` : ""}${esc(name)}${p.isWorktree ? `<span class="badge wt" data-tip="${WT_BADGE_TIP}">worktree</span>` : ""}${p.exists ? "" : `<span class="badge gone" data-tip="${MISSING_TIP}">missing</span>`}</div>
+    <button class="ghost edit pin ${p.exists ? "at3" : "at2"}" data-tip="${folderOf(p.cwd).pinned ? "Unpin this folder" : `Pin this folder to the top of ${state.projView === "list" || !state.meta.groups.length ? "the list" : "its group"}`}" aria-label="${folderOf(p.cwd).pinned ? "Unpin" : "Pin"}" aria-pressed="${!!folderOf(p.cwd).pinned}" onclick='event.stopPropagation();setPin("folder", ${JSON.stringify(p.cwd)}, ${!folderOf(p.cwd).pinned})'>📌</button>
+    <div class="t"><span class="pcaret" data-tip="${open ? "Hide" : "Show"} chats" onclick="event.stopPropagation();toggleProjOpen('${esc(p.key)}')">▶</span>${folderOf(p.cwd).pinned ? pinMark("folder", p.cwd, state.projView === "list" || !state.meta.groups.length ? "the list" : "its group") : ""}${ICON_DIR}${[...state.chats.values()].some(c => c.busy && c.cwd === p.cwd) ? `<span class="badge run" data-tip="A chat in this folder is running"><span class="spinner"></span>working</span>` : ""}${esc(name)}${p.isWorktree ? `<span class="badge wt" data-tip="${WT_BADGE_TIP}">worktree</span>` : ""}${p.exists ? "" : `<span class="badge gone" data-tip="${MISSING_TIP}">missing</span>`}</div>
     <div class="s">${esc(tilde(p.cwd))}</div>
     <div class="s">${p.sessions} chat${p.sessions === 1 ? "" : "s"} · ${ago(p.mtime)}</div>
     ${tags.length || listGroup ? `<div class="chips">${listGroup ? `<span class="chip" style="--cc:var(--c-${listGroup.color})" data-tip="${tipAttr("Group: " + listGroup.name)}">▣ ${esc(listGroup.name)}</span>` : ""}${tags.map(t => chip(t)).join("")}</div>` : ""}</div>${chatsHtml}`;
@@ -1118,11 +1206,13 @@ function projectItem(p, only) {
 function renderProjects() {
   if (state.renaming) { state.redrawAfterRename = true; return; }  // don't wipe the rename box
   renderFilterBar();
-  const entries = state.projects.map(dirEntry).filter(Boolean);
-  const sections = [...state.meta.groups.map(g => ({ id: g.id, name: g.name, color: g.color })), { id: 0, name: "Ungrouped", color: "slate" }];
+  const entries = pinFirst(state.projects.map(dirEntry).filter(Boolean), e => folderOf(e.p.cwd).pinned);
+  const sections = [...pinFirst(state.meta.groups, g => g.pinned).map(g => ({ id: g.id, name: g.name, color: g.color, pinned: !!g.pinned })),
+    { id: 0, name: "Ungrouped", color: "slate" }];
   const filtering = filtersOn();
   if (!state.meta.groups.length || state.projView === "list") {  // flat list, most recent first
     $("projects").innerHTML = entries.map(e => projectItem(e.p, e.only)).join("") || '<div class="empty">Nothing matches.</div>';
+    renderGroupFoldAll();
     return;
   }
   const html = sections.map(g => {
@@ -1137,12 +1227,26 @@ function renderProjects() {
     const looseHtml = loose.map(c => treeChat(c.project, c, true)).join("");
     return `<div class="group ${isCollapsed ? "collapsed" : ""}" data-group="${g.id}"
         ondragover="dragOver(event)" ondragleave="this.classList.remove('drop')" ondrop="dropOn(event, ${g.id})">
-      <div class="group-head" onclick="groupHeadClick(event, ${g.id})" data-tip="${tipAttr(`${g.id ? "Group" : "Folders without a group"}: ${g.name}\nClick to ${isCollapsed ? "expand" : "collapse"}${g.id ? " · double-click to rename" : ""} · drop a folder or chat here to add it`)}"><span class="caret">▼</span><span class="dot" style="--cc:var(--c-${g.color})" data-tip="Group color: ${g.color} (change it in ⚙)"></span><span class="gname">${esc(g.name)}</span><span class="n" data-tip="${items.length} folder${items.length === 1 ? "" : "s"}${loose.length ? ` + ${loose.length} chat${loose.length === 1 ? "" : "s"}` : ""}${filtering ? " match the filter" : ""}">${n}</span></div>
+      <div class="group-head" onclick="groupHeadClick(event, ${g.id})" data-tip="${tipAttr(`${g.id ? "Group" : "Folders without a group"}: ${g.name}\nClick to ${isCollapsed ? "expand" : "collapse"}${g.id ? " · double-click to rename" : ""} · drop a folder or chat here to add it`)}"><span class="caret">▼</span><span class="dot" style="--cc:var(--c-${g.color})" data-tip="Group color: ${g.color} (change it in ⚙)"></span><span class="gname">${esc(g.name)}</span>${g.pinned ? pinMark("group", g.id, "the sidebar") : ""}<span class="n" data-tip="${items.length} folder${items.length === 1 ? "" : "s"}${loose.length ? ` + ${loose.length} chat${loose.length === 1 ? "" : "s"}` : ""}${filtering ? " match the filter" : ""}">${n}</span>${g.id && !g.pinned ? `<button class="ghost gpin" data-tip="Pin this group to the top of the sidebar" aria-label="Pin group" onclick="event.stopPropagation();setPin('group', ${g.id}, true)">📌</button>` : ""}</div>
       <div class="group-body">${looseHtml}${items.map(e => projectItem(e.p, e.only)).join("") || (looseHtml ? "" : '<div class="s" style="padding:8px 14px;color:var(--muted);font-size:12px" data-tip="Drag a folder or chat here, or use 🏷">Drag folders or chats here</div>')}</div></div>`;
   }).join("");
   $("projects").innerHTML = html || '<div class="empty">Nothing matches.</div>';
+  renderGroupFoldAll();
 }
 function toggleGroup(id) { collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id); store.set("collapsed", JSON.stringify([...collapsed])); renderProjects(); }
+/* ⇕ fold every group, or unfold them all if they're all folded already (like the worktree ⇕) */
+function foldAllGroups() {
+  const groups = [...$("projects").querySelectorAll(".group")];
+  const fold = groups.some(g => !g.classList.contains("collapsed"));
+  groups.forEach(g => fold ? collapsed.add(+g.dataset.group) : collapsed.delete(+g.dataset.group));
+  store.set("collapsed", JSON.stringify([...collapsed])); renderProjects();
+}
+function renderGroupFoldAll() {
+  const groups = [...$("projects").querySelectorAll(".group")], b = $("groupFoldAll");
+  b.hidden = groups.length < 2 || filtersOn();  // folding is off while filtering: every match is shown
+  const fold = groups.some(g => !g.classList.contains("collapsed"));
+  b.dataset.tip = fold ? "Fold every group" : "Unfold every group"; b.setAttribute("aria-label", b.dataset.tip);
+}
 
 /* drag a folder onto a group header/body to move it */
 function dragStart(e) {
@@ -1304,7 +1408,7 @@ async function refreshRepoAndSessions() {
 function renderSessions() {
   if (state.renaming) { state.redrawAfterRename = true; return; }
   const q = $("sessSearch").value.toLowerCase();
-  const list = state.sessions.filter(s => !q || (s.title + " " + (s.firstPrompt || "") + " " + (s.lastPrompt || "")).toLowerCase().includes(q));
+  const list = pinFirst(state.sessions.filter(s => !q || (s.title + " " + (s.firstPrompt || "") + " " + (s.lastPrompt || "")).toLowerCase().includes(q)), chatPinned);
   if (state.repo) {
     const searching = !!q;
     const groups = groupByWorktree(list).filter(g => !searching || g.items.length);
@@ -1323,7 +1427,7 @@ function sessionItem(s) {
     const badge = c?.busy ? `<span class="badge run" data-tip="${tipAttr(`Claude is working on this chat (${c.status || "working"}).\nOpen it any time — it keeps running either way.`)}"><span class="spinner"></span>working</span>`
       : state.unseen.has(s.id) ? `<span class="badge new" data-tip="Finished while you were in another chat">● new</span>` : "";
     return `<div class="item ${state.session === s.id ? "active" : ""}" data-sid="${s.id}" onclick="sessionClick(event, '${s.id}')" oncontextmenu="sessionMenu(event, '${s.id}')" data-tip="${tipAttr(tip)}">
-      <div class="t">${ICON_CHAT}${badge}${noteBadge(s.id)}<span class="ttl">${esc(s.title)}</span></div>
+      <div class="t">${chatPinned(s) ? pinMark("chat", s.id, "its folder") : ""}${ICON_CHAT}${badge}${noteBadge(s.id)}<span class="ttl">${esc(s.title)}</span></div>
       <button class="ghost more-btn" aria-label="More actions" aria-haspopup="menu" data-tip="More: rename, group &amp; tags, notes, copy resume command… (or right-click the chat)" onclick="sessionMenu(event, '${s.id}')">⋯</button>
       ${chatChips(s.id, true)}
       <div class="s">${ago(s.mtime)} · ${s.messages} msgs${s.gitBranch && s.gitBranch !== "HEAD" ? " · ⎇ " + esc(s.gitBranch) : ""}${s.cost ? " · $" + s.cost.toFixed(2) : ""}</div>
@@ -2208,11 +2312,13 @@ function applyNews(r) {
   }
   if (newsDlg.open) renderNews();
 }
-/* tab icon: Claude starburst; a small dot is added while there are unread updates */
-const FAVICON = $("favicon").href;
+/* tab icon: the pixel-art Claude Code mascot; a small dot is added while there are unread updates */
+const favEl = $("favicon");
+const FAVICON = favEl.getAttribute("href");
+const FAVICON_DOT = FAVICON.replace("</svg>", "<circle cx='64.8' cy='20.7' r='15' fill='%23e5484d' stroke='white' stroke-width='4.6'/></svg>");
 function setFaviconDot(on) {
-  const want = on ? FAVICON.replace("</svg>", "<circle cx='25' cy='7' r='6.5' fill='%23e5484d' stroke='white' stroke-width='2'/></svg>") : FAVICON;
-  if ($("favicon").href !== want) $("favicon").href = want;
+  const want = on ? FAVICON_DOT : FAVICON;
+  if (favEl.getAttribute("href") !== want) favEl.setAttribute("href", want);
 }
 function dismissBanner() {
   store.set("newsDismissedMax", String(Math.max(0, ...news.items.map(n => n.id))));
@@ -2400,6 +2506,8 @@ function sessionMenu(e, sid, key) {
     { icon: "✎", label: "Rename…", key: "double-click", tip: "Give this chat a new name (same as /rename in the terminal)",
       run: () => startRename(document.querySelector(`${where} [data-sid="${sid}"] .ttl`), sid) },
     { icon: "🏷", label: "Group & tags…", tip: "Put this chat in a group and tag it", run: () => openChatDlg(sid, info.title) },
+    chatPinned({ id: sid }) ? { icon: "📌", label: "Unpin", tip: "Back to its usual place (most recent first)", run: () => setPin("chat", sid, false) }
+      : { icon: "📌", label: "Pin to top of folder", tip: "Keep this chat at the top of its folder's chat list", run: () => setPin("chat", sid, true) },
     { icon: "📝", label: "Notes & to-dos", tip: "Open the chat with its notes and to-dos panel",
       run: async () => { await open(); toggleNotes(true); } },
     "-",
@@ -2422,7 +2530,7 @@ async function removeSession(sid, title) {
   if (!confirm(`Remove “${title}”?\n\nIt disappears from the dashboard and from claude --resume. The session file is moved to ~/.claude/workbench-trash (not deleted), and you can undo right after.`)) return;
   try { await api("/api/session/remove", { id: sid }); } catch (e) { return toast("Remove failed: " + e.message); }
   if (chat) {
-    if (state.chat === chat) { leaveChat(); $("msgsEmpty").hidden = false; setChatHeader("No chat open", "", null); $("chatSub").textContent = ""; $("prompt").disabled = true; $("sendBtn").disabled = true; renderNotesBtn(); }
+    if (state.chat === chat) { leaveChat(); $("msgsEmpty").hidden = false; setChatHeader("No chat open", "", null); $("chatSub").textContent = ""; $("prompt").disabled = true; $("sendBtn").disabled = true; renderNotes(); }
     dropChat(chat);
   }
   state.unseen.delete(sid);
@@ -2463,8 +2571,15 @@ function renderNotesBtn() {
 }
 function toggleNotes(force) {
   const open = force ?? !notesOpen();
-  $("notesPanel").hidden = !open; $("chat").classList.toggle("notes-open", open); store.set("notesOpen", open ? "1" : "");
-  if (open) { $("notesPanel").style.top = $("chat").querySelector(".col-head").offsetHeight + "px"; renderNotes(); $("noteInput").focus(); }
+  store.set("notesOpen", open ? "1" : "");
+  syncNotesPanel();
+  if (notesOpen()) { renderNotes(); $("noteInput").focus(); }
+}
+/* the panel belongs to a chat: it shows only while one is on screen, and remembers whether you left it open */
+function syncNotesPanel() {
+  const open = !!state.chat && !!store.get("notesOpen");
+  $("notesPanel").hidden = !open; $("chat").classList.toggle("notes-open", open);
+  if (open) $("notesPanel").style.top = $("chat").querySelector(".col-head").offsetHeight + "px";
 }
 function setNoteKind(k) {
   noteKind = k;
@@ -2472,9 +2587,8 @@ function setNoteKind(k) {
   $("noteInput").placeholder = k === "todo" ? "Add a to-do…  (Enter adds · Shift+Enter new line)" : "Add a note…  (Enter adds · Shift+Enter new line)";
 }
 async function renderNotes() {
-  renderNotesBtn();
+  renderNotesBtn(); syncNotesPanel();
   if (!notesOpen()) return;
-  $("notesPanel").style.top = $("chat").querySelector(".col-head").offsetHeight + "px";
   const chat = state.chat, sid = chat?.session;
   $("noteInput").disabled = !sid;
   if (!sid) { $("queueBtn").hidden = true; $("notesList").innerHTML = '<div class="empty">Send a first message — notes are saved with the chat once it has an ID.</div>'; return; }
@@ -2486,7 +2600,9 @@ async function renderNotes() {
     if (state.chat?.session !== sid) return;
   }
   const list = state.notes.get(sid);
-  const todos = list.filter(n => n.kind === "todo" && !n.done), notes = list.filter(n => n.kind === "note"), done = list.filter(n => n.kind === "todo" && n.done);
+  const appliedLast = l => [...l.filter(n => n.status !== "applied"), ...l.filter(n => n.status === "applied")];
+  const todos = appliedLast(list.filter(n => n.kind === "todo" && !n.done)), notes = appliedLast(list.filter(n => n.kind === "note")),
+    done = list.filter(n => n.kind === "todo" && n.done);
   const queued = list.filter(n => n.status === "queued" && !["conflict", "duplicate"].includes(n.check_verdict)).length;
   $("queueBtn").hidden = !queued || chat.queueActive;
   $("queueBtn").textContent = `▶ Run queue (${queued})`;
@@ -2633,7 +2749,7 @@ function continueQueue(chat, lastOk) {
 function afterRun(chat) { if (!chat.noteRun && chat.queueActive) setTimeout(() => continueQueue(chat, true)); }
 setNoteKind("todo");
 loadNoteCounts();
-if (store.get("notesOpen")) { $("notesPanel").hidden = false; $("chat").classList.add("notes-open"); }
+syncNotesPanel();
 
 /* ---------- resizable columns: drag a divider (or focus it and use ← →); double-click resets. Saved in this browser. ---------- */
 const PANES = {
@@ -2736,6 +2852,7 @@ function fillProfileCard() {
       <small>${esc(resetsIn(l.resets_at))}${l.severity === "critical" ? " · limit reached" : ""}</small></div>`).join("")
       : `<div class="lim"><small>${esc(p.usageError ? "Usage unavailable: " + p.usageError : "Loading usage…")}</small></div>`) +
     (p.extra && p.extra.is_enabled ? `<div class="lim"><div class="row"><span>Extra usage</span><span>${Math.round((p.extra.utilization || 0))}%</span></div><small>${p.extra.used_credits} of ${p.extra.monthly_limit} ${esc(p.extra.currency || "")} this month</small></div>` : "") +
+    `<button class="tokbtn" onclick="openTokens()" data-tip="Tokens used in the 5-hour window, today and this week — per chat and per model">📊 Token usage…</button>` +
     `<div class="foot"><span>${p.usageAt ? "Updated " + ago(p.usageAt) : ""}${p.auth && p.auth !== "none" ? " · using " + esc(p.auth) : ""}</span>
       <button class="ghost" onclick="loadProfile(true)" data-tip="Check usage again now (free — answered by Claude Code, no model call)">↻ Refresh</button></div>`;
 }
@@ -2744,6 +2861,81 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") $("profileCa
 loadProfile();
 setInterval(() => loadProfile(), 2 * 60 * 1000);
 addEventListener("focus", () => loadProfile());
+
+/* ---------- token usage: counted from the session files (subagents included); the 5-hour and weekly windows
+   follow the plan's reset times from /usage, so they sit beside the limit percentages ---------- */
+state.tokens = null;
+let tokWin = store.get("tokWin") || "session";
+const tokDlg = $("tokDlg");
+const fmtTok = n => n >= 1e9 ? (n / 1e9).toFixed(n >= 1e10 ? 1 : 2) + "B" : n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 1 : 2) + "M"
+  : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + "K" : String(n);
+const fullTok = n => n.toLocaleString() + " tokens";
+const TOK_WINS = { session: ["5-hour window", "session"], today: ["Today", null], week: ["This week", "weekly_all"] };
+const hm = t => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const dayName = t => new Date(t * 1000).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+function openTokens() { $("profileCard")?.remove(); tokDlg.showModal(); loadTokens(); }
+async function loadTokens() {
+  $("tokBody").classList.add("stale");  // keep the last numbers on screen while counting again
+  try { state.tokens = await api("/api/tokens" + (state.chat?.session ? "?sid=" + state.chat.session : "")); }
+  catch (e) { $("tokBody").innerHTML = `<div class="empty errbox">${esc(e.message)}</div>`; return; }
+  finally { $("tokBody").classList.remove("stale"); }
+  renderTokens();
+}
+function setTokWin(w) { tokWin = w; store.set("tokWin", w); renderTokens(); }
+function tokSpan(k, w) {
+  if (k === "today") return "since midnight";
+  if (!w.aligned) return k === "session" ? "last 5 hours" : "last 7 days";
+  const left = (resetsIn(new Date(w.to * 1000).toISOString()).match(/\(in (.+)\)/) || [])[1];
+  return (k === "session" ? `${hm(w.from)} – ${hm(w.to)}` : `since ${dayName(w.from)}, ${hm(w.from)}`) + (left ? ` · resets in ${left}` : "");
+}
+function renderTokens() {
+  const T = state.tokens; if (!T || !tokDlg.open) return;
+  const J = v => JSON.stringify(v).replace(/'/g, "&#39;");
+  const lim = kind => (state.profile?.limits || []).find(l => l.kind === kind);
+  const tiles = Object.entries(TOK_WINS).map(([k, [label, kind]]) => {
+    const w = T.windows[k], l = kind && lim(kind);
+    return `<button class="tok-tile ${k === tokWin ? "on" : ""}" onclick="setTokWin('${k}')" aria-pressed="${k === tokWin}"
+      data-tip="${tipAttr(`${label}: ${fullTok(w.total)}\n${w.calls.toLocaleString()} model calls in ${w.sessionCount} chat${w.sessionCount === 1 ? "" : "s"}\nClick to see the breakdown below`)}">
+      <span class="lbl">${label}</span><span class="big">${fmtTok(w.total)}</span>
+      <small>${esc(tokSpan(k, w))}</small>${l ? `<small>${l.percent}% of the ${k === "session" ? "5-hour" : "weekly"} limit used</small>` : ""}</button>`;
+  }).join("");
+  const w = T.windows[tokWin], here = state.chat?.session;
+  const rows = [["Output", w.output, "Text and tool calls Claude wrote — the costliest kind"], ["Input", w.input, "New, uncached prompt tokens"],
+    ["Cache write", w.cacheWrite, "Context stored in the prompt cache for the next turns"],
+    ["Cache read", w.cacheRead, "Earlier context re-read from the cache each turn — cheap per token, so it is usually most of the total"]];
+  const pct = n => w.total ? (n / w.total * 100 < 1 && n ? "<1" : Math.round(n / w.total * 100)) + "%" : "";
+  const breakdown = `<table class="tok-tbl"><tbody>` +
+    rows.map(([k, n, tip]) => `<tr data-tip="${tipAttr(tip + "\n" + fullTok(n))}"><td>${k}</td><td class="n">${fmtTok(n)}</td><td class="sub">${pct(n)}</td></tr>`).join("") +
+    `<tr><td><b>Total</b></td><td class="n"><b>${fmtTok(w.total)}</b></td><td class="sub">${w.calls.toLocaleString()} calls</td></tr></tbody></table>`;
+  const top = w.models[0]?.tokens || 1;
+  const models = w.models.length ? `<table class="tok-tbl"><tbody>` + w.models.map(m => `<tr data-tip="${tipAttr(m.model + "\n" + fullTok(m.tokens))}">
+      <td>${esc(m.model.replace(/^claude-/, ""))}<div class="meter" style="width:${Math.max(1, m.tokens / top * 100)}%"></div></td>
+      <td class="n">${fmtTok(m.tokens)}</td></tr>`).join("") + `</tbody></table>` : `<div class="tok-note">No model calls in this window.</div>`;
+  const mine = w.sessions.find(x => x.id === here);
+  const chats = w.sessions.length ? `<table class="tok-tbl"><tbody>` + w.sessions.map(x => `<tr class="tok-chat ${x.id === here ? "here" : ""}" tabindex="0"
+      onclick='tokDlg.close(); openChatFromTree(${J(x.project)}, ${J(x.id)})' onkeydown="if(event.key==='Enter')this.click()"
+      data-tip="${tipAttr(`${x.title || x.id}\n${x.cwd || ""}\n${fullTok(x.tokens)} · ${x.output.toLocaleString()} output\nClick to open this chat`)}">
+      <td style="max-width:0;width:100%"><span class="t">${x.rank > 8 ? `#${x.rank} · ` : ""}${x.id === here ? "▸ " : ""}${esc(x.title || x.id)}</span><small>${esc(tilde(x.cwd || ""))}</small></td>
+      <td class="n">${fmtTok(x.tokens)}</td><td class="sub">${pct(x.tokens)}</td></tr>`).join("") + `</tbody></table>`
+      : `<div class="tok-note">No chats used tokens in this window.</div>`;
+  const thisChat = here ? `<div class="tok-note">This chat: ${mine ? `<b>${fmtTok(mine.tokens)}</b> (${pct(mine.tokens)} of the window, #${mine.rank} of ${w.sessionCount})` : "no tokens in this window"}</div>` : "";
+  // 7-day chart: one series, so one hue and no legend; only the peak and today get a number, the rest is in the tooltip and table
+  const dt = d => d.input + d.output + d.cacheWrite + d.cacheRead;
+  const max = Math.max(1, ...T.days.map(dt)), peak = T.days.reduce((a, d, i) => dt(d) > dt(T.days[a]) ? i : a, 0), last = T.days.length - 1;
+  const bars = T.days.map((d, i) => { const h = dt(d) / max * 100;
+    return `<div class="tbar" tabindex="0" role="img" aria-label="${esc(dayName(d.day))}: ${fullTok(dt(d))}" data-tip="${tipAttr(`${dayName(d.day)}${i === last ? " (today)" : ""}\nTotal ${fullTok(dt(d))}\nOutput ${d.output.toLocaleString()} · Input ${d.input.toLocaleString()}\nCache write ${d.cacheWrite.toLocaleString()} · Cache read ${d.cacheRead.toLocaleString()}`)}">
+      ${i === peak || i === last ? `<b style="bottom:calc(${h}% + 3px)">${fmtTok(dt(d))}</b>` : ""}<i style="height:${h}%"></i></div>`; }).join("");
+  const days = T.days.map((d, i) => `<span class="${i === last ? "today" : ""}">${i === last ? "Today" : new Date(d.day * 1000).toLocaleDateString([], { weekday: "short" })}</span>`).join("");
+  const table = `<details><summary class="tok-note">Show the days as a table</summary><table class="tok-tbl"><tbody>
+    <tr><td class="tok-note">Day</td><td class="sub">Output</td><td class="sub">Input</td><td class="sub">Cache write</td><td class="sub">Cache read</td><td class="sub">Total</td></tr>` +
+    T.days.map(d => `<tr><td>${esc(dayName(d.day))}</td><td class="n">${fmtTok(d.output)}</td><td class="n">${fmtTok(d.input)}</td><td class="n">${fmtTok(d.cacheWrite)}</td><td class="n">${fmtTok(d.cacheRead)}</td><td class="n"><b>${fmtTok(dt(d))}</b></td></tr>`).join("") +
+    `</tbody></table></details>`;
+  $("tokBody").innerHTML = `<div class="tok-tiles">${tiles}</div>
+    <div class="tok-cols"><div><h3>${TOK_WINS[tokWin][0]} · breakdown</h3>${breakdown}</div><div><h3>By model</h3>${models}</div></div>
+    <div><h3>Chats in this window</h3>${chats}${thisChat}</div>
+    <div><h3>Last 7 days</h3><div class="tok-chart">${bars}</div><div class="tok-days">${days}</div>${table}</div>
+    <div class="tok-note">Counted from the session files on this machine (subagents included), each model call once. Updated ${ago(T.at)}.</div>`;
+}
 
 /* ---------- collapse the folder list to a slim strip (« / » or Ctrl+B); remembered in this browser ---------- */
 function toggleLeft(force) {
@@ -2772,6 +2964,123 @@ async function openInDesktop(sid, cwd) {
   try { await api("/api/open-desktop", { cwd, sessionId: sid }); toast("Opened in Claude Desktop"); }
   catch (e) { toast("Couldn't open Claude Desktop: " + e.message); }
 }
+
+/* ---------- model · effort · mode, shown like the Claude Code console, with pickers like /model ---------- */
+state.models = { models: [], default: null };
+const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+const EFFORT_NAMES = { low: "Low", medium: "Medium", high: "High", xhigh: "Extra", max: "Max" };
+const MODES = [
+  { id: "auto", glyph: "⏵⏵", name: "auto mode", desc: "Claude decides: safe actions run, risky ones are blocked." },
+  { id: "default", glyph: "⏵", name: "default", desc: "Read-only tools only. Anything that would ask for permission is denied (the page can't ask you)." },
+  { id: "acceptEdits", glyph: "⏵⏵", name: "accept edits", desc: "File edits are allowed; other risky actions are denied." },
+  { id: "plan", glyph: "⏸", name: "plan mode", desc: "Read and plan only — no edits or commands." },
+  { id: "bypassPermissions", glyph: "⚠", name: "bypass permissions", desc: "Everything is allowed without asking. Use with care!", danger: true },
+];
+const ALIASES = { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku", fable: "Fable" };
+const modelById = id => state.models.models.find(m => m.id === id);
+/* the model a choice resolves to: an exact id, an alias like "opus", or the Claude Code default */
+function resolveModel(v) {
+  if (!v) return modelById(state.models.default) || state.models.models.find(m => m.id.startsWith(state.models.default || "~")) || null;
+  return modelById(v) || state.models.models.find(m => m.section === "main" && m.short.toLowerCase() === v.toLowerCase()) || null;
+}
+async function loadModels() {
+  try { state.models = await api("/api/models"); } catch { return; }
+  // make every catalog model selectable in the (hidden) select that stores the choice
+  const sel = $("model"), keep = sel.value;
+  for (const m of state.models.models) if (![...sel.options].some(o => o.value === m.id)) sel.add(new Option(m.name, m.id));
+  sel.value = keep;
+  if (ALIASES[keep]) { const m = resolveModel(keep); if (m) setSelect("model", m.id); }  // old "opus"-style choice → exact model
+  renderModelBar();
+}
+function setSelect(id, value) { const el = $(id); el.value = value; el.dispatchEvent(new Event("change")); }
+function renderModelBar() {
+  const v = $("model").value, m = resolveModel(v), def = resolveModel("");
+  const mc = $("modelChip");
+  mc.innerHTML = `<span>✳</span><span>${esc(v ? (m?.name || v) : `Default${def ? " (" + def.name + ")" : ""}`)}</span><span class="k">▾</span>`;
+  mc.dataset.tip = `Model for your next message: ${v ? (m ? m.name + (m.description ? " — " + m.description : "") : v) : "your Claude Code default" + (def ? " (" + def.name + ")" : "")}` +
+    (m?.notice ? `\n${m.notice}` : "") + "\nClick to choose (like /model)";
+  mc.classList.toggle("warn", !!(m?.badge));
+  // effort: only the levels this model supports
+  const efforts = (m || def)?.efforts || [], e = $("effort").value, rec = efforts.find(x => x.recommended);
+  const ec = $("effortChip");
+  ec.disabled = !efforts.length;
+  if (!efforts.length) { ec.innerHTML = `<span class="k">effort</span><span>not used by ${esc((m || def)?.short || "this model")}</span>`; ec.dataset.tip = "This model doesn't take an effort level"; }
+  else {
+    const shown = e || rec?.id || "medium", n = EFFORTS.indexOf(shown) + 1;
+    ec.innerHTML = `<span class="k">effort</span><span class="dots">${"●".repeat(n)}<i>${"●".repeat(5 - n)}</i></span><span>${esc(e ? EFFORT_NAMES[e] || e : "default")}</span><span class="k">▾</span>`;
+    ec.dataset.tip = `Effort: ${e ? EFFORT_NAMES[e] || e : "default" + (rec ? " (recommended for " + (m || def).short + ": " + rec.name + ")" : "")}\nHigher effort = more thorough, slower, uses limits faster. Click to choose.`;
+  }
+  const md = MODES.find(x => x.id === $("permMode").value) || MODES[0], pc = $("modeChip");
+  pc.innerHTML = `<span>${md.glyph}</span><span>${esc(md.name)}</span><span class="k">▾</span>`;
+  pc.dataset.tip = `${md.name}: ${md.desc}\nClick to choose · Shift+Tab in the message box cycles modes`;
+  pc.classList.toggle("bad", !!md.danger);
+}
+/* a list popup above a chip: rows of {id, html, on}; keyboard: ↑ ↓ Enter Esc */
+function openPicker(anchor, headHtml, rows, onPick) {
+  closeMenu(); $("pickerPop")?.remove(); hideTip();
+  const m = document.createElement("div"); m.className = "picker"; m.id = "pickerPop"; m.setAttribute("role", "listbox");
+  m.innerHTML = (headHtml ? `<div class="ph">${headHtml}</div>` : "") + rows;
+  m.addEventListener("click", ev => { const b = ev.target.closest("button[data-v]"); if (!b) return; m.remove(); onPick(b.dataset.v); renderModelBar(); });
+  m.addEventListener("keydown", ev => {
+    const bs = [...m.querySelectorAll("button[data-v]")].filter(b => b.offsetParent), i = bs.indexOf(document.activeElement);
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") { ev.preventDefault(); bs[(i + (ev.key === "ArrowDown" ? 1 : bs.length - 1)) % bs.length]?.focus(); }
+    else if (ev.key === "Escape") { m.remove(); anchor.focus(); }
+  });
+  hostFloating(m);
+  const r = anchor.getBoundingClientRect(), h = m.offsetHeight;
+  m.style.left = Math.max(6, Math.min(r.left, innerWidth - m.offsetWidth - 6)) + "px";
+  m.style.top = (r.top - h - 6 > 6 ? r.top - h - 6 : r.bottom + 6) + "px";
+  (m.querySelector("button.on") || m.querySelector("button[data-v]"))?.focus({ preventScroll: true });
+}
+document.addEventListener("mousedown", e => { const p = $("pickerPop"); if (p && !p.contains(e.target) && !e.target.closest(".cchip")) p.remove(); }, true);
+const optRow = (v, on, name, { desc, note, badge, rec, tip } = {}) =>
+  `<button class="opt ${on ? "on" : ""}" role="option" aria-selected="${on}" data-v="${esc(v)}" ${tip ? `data-tip="${tipAttr(tip)}"` : ""}>
+    <span class="ck">${on ? "✓" : ""}</span><span class="nm">${esc(name)}</span>${badge ? `<span class="bd ${rec ? "rec" : ""}">${esc(badge)}</span>` : "<span></span>"}
+    ${desc ? `<span class="ds">${esc(desc)}</span>` : ""}${note ? `<span class="nt">ⓘ ${esc(note)}</span>` : ""}</button>`;
+function pickModel(anchor) {
+  const cur = $("model").value, def = resolveModel(""), list = state.models.models;
+  if (!list.length) loadModels();
+  const recEff = m => (m.efforts.find(e => e.recommended) || {}).name;
+  const row = m => optRow(m.id, cur === m.id, m.name, { desc: [m.description, recEff(m) && `recommended effort: ${recEff(m)}`].filter(Boolean).join(" · "),
+    note: m.notice, badge: m.badge, tip: m.tip });
+  const main = list.filter(m => m.section === "main"), more = list.filter(m => m.section !== "main");
+  openPicker(anchor, `<b>Model</b>Same list as /model in the terminal. Applies to your next message.`,
+    optRow("", !cur, `Default${def ? " (" + def.name + ")" : ""}`, { desc: "Whatever your Claude Code settings use" }) +
+    main.map(row).join("") +
+    (more.length ? `<details ${more.some(m => m.id === cur) ? "open" : ""}><summary>More models (${more.length})</summary>${more.map(row).join("")}</details>` : "") +
+    (state.models.error ? `<div class="ph">${esc(state.models.error)}</div>` : ""),
+    v => {
+      setSelect("model", v);
+      const m = resolveModel(v), e = $("effort").value;
+      if (e && m && !m.efforts.some(x => x.id === e)) { setSelect("effort", ""); toast(`${m.short} has no “${EFFORT_NAMES[e] || e}” effort — back to default`); }
+    });
+}
+function pickEffort(anchor) {
+  const m = resolveModel($("model").value) || resolveModel(""), cur = $("effort").value; if (!m) return;
+  const rec = m.efforts.find(x => x.recommended);
+  openPicker(anchor, `<b>Effort · ${esc(m.name)}</b>${esc(m.effortHelp || "Higher effort means more thorough responses, but takes longer and uses your limits faster.")}`,
+    optRow("", !cur, "Default", { desc: rec ? `Recommended for ${m.short}: ${rec.name}` : "Your settings' default" }) +
+    m.efforts.map(x => optRow(x.id, cur === x.id, x.name, { badge: x.recommended ? "Recommended" : "", rec: x.recommended, desc: x.tip || "",
+      note: "" })).join(""),
+    v => setSelect("effort", v));
+}
+function pickMode(anchor) {
+  const cur = $("permMode").value;
+  openPicker(anchor, `<b>Permission mode</b>What Claude may do without asking. Shift+Tab in the message box cycles them.`,
+    MODES.map(x => optRow(x.id, cur === x.id, `${x.glyph}  ${x.name}`, { desc: x.desc, note: x.danger ? "Claude can run any command and change any file" : "" })).join(""),
+    v => setSelect("permMode", v));
+}
+/* Shift+Tab in the message box cycles the mode, like the terminal (bypass is never reached by cycling) */
+$("prompt").addEventListener("keydown", e => {
+  if (e.key !== "Tab" || !e.shiftKey) return;
+  e.preventDefault();
+  const order = ["auto", "default", "acceptEdits", "plan"], i = order.indexOf($("permMode").value);
+  setSelect("permMode", order[(i + 1) % order.length]); renderModelBar();
+  const md = MODES.find(x => x.id === $("permMode").value); toast(`${md.glyph} ${md.name}`);
+});
+for (const id of ["model", "effort", "permMode"]) $(id).addEventListener("change", renderModelBar);
+renderModelBar();
+loadModels();
 
 /* ---------- ⏻ restart the dashboard server (e.g. after server.py changed) ---------- */
 async function loadStatus() {

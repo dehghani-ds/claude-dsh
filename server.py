@@ -108,6 +108,10 @@ def db_init():
                           ("check_suggest", "TEXT NOT NULL DEFAULT ''"), ("checked", "REAL")):
             if col not in have:
                 c.execute(f"ALTER TABLE session_notes ADD COLUMN {col} {decl}")
+        # pinned groups, folders (within their group) and chats (within their folder) are listed first
+        for table in ("groups", "folders", "chats"):
+            if "pinned" not in {r[1] for r in c.execute(f"PRAGMA table_info({table})")}:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
 
 
 def _clean_name(name, what):
@@ -128,18 +132,18 @@ def meta_all():
         groups = [dict(r) for r in c.execute("SELECT * FROM groups ORDER BY position, name")]
         tags = [dict(r) for r in c.execute("SELECT * FROM tags ORDER BY name")]
         folders = {}
-        for r in c.execute("SELECT cwd, group_id FROM folders"):
-            folders[r["cwd"]] = {"group": r["group_id"], "tags": []}
+        for r in c.execute("SELECT cwd, group_id, pinned FROM folders"):
+            folders[r["cwd"]] = {"group": r["group_id"], "tags": [], "pinned": bool(r["pinned"])}
         for r in c.execute("SELECT cwd, tag_id FROM folder_tags"):
-            folders.setdefault(r["cwd"], {"group": None, "tags": []})["tags"].append(r["tag_id"])
+            folders.setdefault(r["cwd"], {"group": None, "tags": [], "pinned": False})["tags"].append(r["tag_id"])
         chats = {}
-        for r in c.execute("SELECT sid, group_id FROM chats"):
-            chats[r["sid"]] = {"group": r["group_id"], "tags": []}
+        for r in c.execute("SELECT sid, group_id, pinned FROM chats"):
+            chats[r["sid"]] = {"group": r["group_id"], "tags": [], "pinned": bool(r["pinned"])}
         for r in c.execute("SELECT sid, tag_id FROM chat_tags"):
-            chats.setdefault(r["sid"], {"group": None, "tags": []})["tags"].append(r["tag_id"])
-    # grouped/tagged chats are listed on their own too, so include what's needed to show them
+            chats.setdefault(r["sid"], {"group": None, "tags": [], "pinned": False})["tags"].append(r["tag_id"])
+    # grouped/tagged/pinned chats are listed on their own too, so include what's needed to show them
     for sid, ch in list(chats.items()):
-        if ch["group"] is None and not ch["tags"]:
+        if ch["group"] is None and not ch["tags"] and not ch["pinned"]:
             del chats[sid]
             continue
         try:
@@ -211,6 +215,25 @@ def folder_set(b):
                     "INSERT INTO tags (name, color) VALUES (?, ?)", (name, _color(None, name))).lastrowid
                 c.execute("INSERT OR IGNORE INTO folder_tags VALUES (?, ?)", (cwd, tid))
         _drop_unused_tags(c)
+    return {"ok": True}
+
+
+def pin_set(b):
+    """Pin or unpin a group (listed first), a folder (first in its group) or a chat (first in its folder)."""
+    kind, on = b.get("kind"), int(bool(b.get("pinned")))
+    with DB_LOCK, db() as c:
+        if kind == "group":
+            if not c.execute("UPDATE groups SET pinned=? WHERE id=?", (on, int(b["id"]))).rowcount:
+                raise ValueError("group not found")
+        elif kind == "folder":
+            c.execute("INSERT OR IGNORE INTO folders (cwd) VALUES (?)", (b["cwd"],))
+            c.execute("UPDATE folders SET pinned=? WHERE cwd=?", (on, b["cwd"]))
+        elif kind == "chat":
+            sid = _check_sid(b.get("sid"))
+            c.execute("INSERT OR IGNORE INTO chats (sid) VALUES (?)", (sid,))
+            c.execute("UPDATE chats SET pinned=? WHERE sid=?", (on, sid))
+        else:
+            raise ValueError("kind must be group, folder or chat")
     return {"ok": True}
 
 
@@ -1278,6 +1301,144 @@ def profile_info(force=False):
         return {**acct, **(_usage["data"] or {"limits": []}), "usageAt": _usage["t"], "usageError": _usage["error"]}
 
 
+_tok_cache = {}  # path -> (mtime, size, rows)
+
+
+def _usage_rows(path: Path):
+    """One row per model call in a transcript: (time, message id, model, input, output, cache write, cache read).
+    Claude Code writes one record per content block, all carrying the same usage, so each message id counts once."""
+    st = path.stat()
+    c = _tok_cache.get(str(path))
+    if c and c[0] == st.st_mtime and c[1] == st.st_size:
+        return c[2]
+    rows, seen = [], set()
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if '"usage"' not in line:
+                continue
+            try:
+                o = json.loads(line)
+            except ValueError:
+                continue
+            m = o.get("message")
+            if o.get("type") != "assistant" or not isinstance(m, dict) or not isinstance(m.get("usage"), dict):
+                continue
+            mid = m.get("id") or o.get("requestId") or o.get("uuid")
+            ts = _iso_ts(o.get("timestamp"))
+            if mid in seen or not ts or m.get("model") == "<synthetic>":
+                continue
+            seen.add(mid)
+            u = m["usage"]
+            rows.append((ts, mid, m.get("model") or "?", int(u.get("input_tokens") or 0), int(u.get("output_tokens") or 0),
+                         int(u.get("cache_creation_input_tokens") or 0), int(u.get("cache_read_input_tokens") or 0)))
+    _tok_cache[str(path)] = (st.st_mtime, st.st_size, rows)
+    return rows
+
+
+def token_usage(sid=None):
+    """Tokens used across every session (subagents included) in three windows: the plan's current 5-hour window,
+    today, and the plan's current week. The windows follow the reset times from /usage when known, so they line up
+    with the limit percentages; otherwise they roll (last 5 hours, last 7 days). Also a per-day series for 7 days."""
+    now = time.time()
+    lims = {l.get("kind"): _iso_ts(l.get("resets_at")) for l in ((_usage["data"] or {}).get("limits") or [])}
+    end5, endw = lims.get("session"), lims.get("weekly_all")
+    a5, aw = bool(end5 and end5 > now), bool(endw and endw > now)
+    s5 = end5 - 5 * 3600 if a5 else now - 5 * 3600
+    sw = endw - 7 * 86400 if aw else now - 7 * 86400
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    sd = today.timestamp()
+    day_starts = [datetime.fromtimestamp(sd - i * 86400).replace(hour=0, minute=0, second=0, microsecond=0).timestamp() for i in range(6, -1, -1)]
+    wins = {"session": {"from": s5, "to": end5 if a5 else None, "aligned": a5},
+            "today": {"from": sd, "to": sd + 86400, "aligned": True},
+            "week": {"from": sw, "to": endw if aw else None, "aligned": aw}}
+    for w in wins.values():
+        w.update(input=0, output=0, cacheWrite=0, cacheRead=0, calls=0, models={}, sessions={})
+    days = [{"day": t, "input": 0, "output": 0, "cacheWrite": 0, "cacheRead": 0} for t in day_starts]
+    earliest = min(sw, day_starts[0])
+    seen = set()
+    if PROJECTS_DIR.is_dir():
+        for d in PROJECTS_DIR.iterdir():
+            if not d.is_dir():
+                continue
+            for f in [*d.glob("*.jsonl"), *d.glob("*/subagents/*.jsonl")]:
+                try:
+                    if f.stat().st_mtime < earliest:
+                        continue
+                    rows = _usage_rows(f)
+                except OSError:
+                    continue
+                owner = f.stem if f.parent == d else f.parent.parent.name  # subagent tokens count for their chat
+                for ts, mid, model, i, o, cw, cr in rows:
+                    if ts < earliest or mid in seen:  # a forked session repeats its parent's messages
+                        continue
+                    seen.add(mid)
+                    for w in wins.values():
+                        if ts >= w["from"]:
+                            w["input"] += i; w["output"] += o; w["cacheWrite"] += cw; w["cacheRead"] += cr; w["calls"] += 1
+                            w["models"][model] = w["models"].get(model, 0) + i + o + cw + cr
+                            ss = w["sessions"].setdefault(owner, {"id": owner, "project": d.name, "tokens": 0, "output": 0})
+                            ss["tokens"] += i + o + cw + cr; ss["output"] += o
+                    for day in reversed(days):
+                        if ts >= day["day"]:
+                            day["input"] += i; day["output"] += o; day["cacheWrite"] += cw; day["cacheRead"] += cr
+                            break
+    out = {}
+    for k, w in wins.items():
+        ranked = sorted(w["sessions"].values(), key=lambda x: -x["tokens"])
+        top = ranked[:8] + [x for x in ranked[8:] if x["id"] == sid]  # keep the chat on screen even when it's small
+        for x in top:
+            try:
+                m = session_meta(PROJECTS_DIR / x["project"] / (x["id"] + ".jsonl"))
+                x.update(title=m["title"], cwd=m["cwd"])
+            except OSError:
+                x.update(title=None, cwd=decode_dir_name(x["project"]))
+            x["rank"] = ranked.index(x) + 1
+        out[k] = {**{f: w[f] for f in ("from", "to", "aligned", "input", "output", "cacheWrite", "cacheRead", "calls")},
+                  "total": w["input"] + w["output"] + w["cacheWrite"] + w["cacheRead"],
+                  "models": sorted(({"model": a, "tokens": b} for a, b in w["models"].items()), key=lambda x: -x["tokens"]),
+                  "sessions": top, "sessionCount": len(ranked)}
+    return {"windows": out, "days": days, "at": now}
+
+
+MODEL_CATALOG_DIR = HOME / ".claude" / "cache" / "model-catalog"
+
+
+def model_catalog():
+    """The models Claude Code offers (its own cached catalog, the same list as /model), with descriptions,
+    badges and each model's effort levels."""
+    data = None
+    for f in sorted(MODEL_CATALOG_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            data = json.loads(f.read_text())
+            models = data["catalog"]["config"]["models"]
+            break
+        except (OSError, ValueError, KeyError, TypeError):
+            data = None
+    if not data:
+        return {"models": [], "error": "Claude Code hasn't downloaded its model list yet — run claude once"}
+    ver = _vtuple(kv_get("cli_version") or "")
+    out = []
+    for m in models:
+        if m.get("min_claude_code_version") and ver and _vtuple(m["min_claude_code_version"]) > ver:
+            continue  # needs a newer Claude Code than the one installed
+        th = m.get("thinking") or {}
+        out.append({
+            "id": m["id"], "name": m.get("name") or m["id"], "short": m.get("short_name") or (m.get("name") or m["id"]).split()[0],
+            "description": m.get("description") or "", "section": m.get("section") or "overflow",
+            "badge": (m.get("badge") or {}).get("message"), "tip": (m.get("tooltip") or {}).get("content"),
+            "notice": (m.get("notice") or {}).get("text"), "effortHelp": th.get("description"),
+            "efforts": [{"id": o["id"], "name": o.get("name") or o["id"], "tip": (o.get("tooltip") or {}).get("content"),
+                         "recommended": (o.get("badge") or {}).get("message") == "Recommended"} for o in th.get("effort_options") or []],
+            "fast": bool(m.get("fast_mode")),
+        })
+    default = None
+    try:
+        default = json.loads((HOME / ".claude" / "settings.json").read_text()).get("model")
+    except (OSError, ValueError):
+        pass
+    return {"models": out, "default": default, "fetchedAt": data.get("fetchedAt")}
+
+
 def server_status():
     """For the ⏻ button: when this process started and whether server.py changed since (restart needed)."""
     code_mtime = os.path.getmtime(__file__)
@@ -1383,6 +1544,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, browse(q.get("path")))
             if u.path == "/api/profile":
                 return self._send(200, profile_info(q.get("force") == "1"))
+            if u.path == "/api/tokens":
+                return self._send(200, token_usage(q.get("sid")))
+            if u.path == "/api/models":
+                return self._send(200, model_catalog())
             if u.path == "/api/status":
                 return self._send(200, server_status())
             if u.path == "/api/notes":
@@ -1450,6 +1615,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, folder_set(b))
             if u.path == "/api/group":
                 return self._send(200, group_save(b))
+            if u.path == "/api/pin":
+                return self._send(200, pin_set(b))
             if u.path == "/api/group/move":
                 return self._send(200, group_move(int(b["id"]), int(b["dir"])))
             if u.path == "/api/group/delete":
