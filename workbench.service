@@ -8,7 +8,7 @@ After=@TARGET@
 PartOf=@TARGET@
 
 [Service]
-ExecStart="@PYTHON@" "@DIR@/server.py" --port @PORT@
+ExecStart="@PYTHON@" "@DIR@/server.py" --port @PORT@@ARGS@
 WorkingDirectory=@DIR@
 # claude, git and bash must be findable: the installer copies the PATH of the shell it ran in
 Environment="PATH=@PATH@"

@@ -3,6 +3,7 @@
 #
 #   ./install-service.sh              install (or update) and start it on port 8765
 #   ./install-service.sh --port 9000  use another port
+#   ./install-service.sh --tailscale  also listen on the tailnet (phone access; see tailscale-remote.sh)
 #   ./install-service.sh --dry-run    only print the service file it would install
 #   ./install-service.sh --uninstall  stop it and remove the service
 #
@@ -15,13 +16,15 @@ UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 UNIT="$UNIT_DIR/$NAME.service"
 PORT=8765
 MODE=install
+ARGS=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --port) PORT="${2:?--port needs a number}"; shift 2 ;;
+    --tailscale) ARGS=" --tailscale"; shift ;;
     --dry-run) MODE=dry; shift ;;
     --uninstall) MODE=uninstall; shift ;;
-    -h|--help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -59,7 +62,8 @@ case "$DIR$SVC_PATH" in *'"'*|*'\\'*) die "the folder path or PATH contains a qu
 # escape for sed, and double % because systemd expands %-specifiers
 esc() { printf '%s' "$1" | sed -e 's/%/%%/g' -e 's/[\\&|]/\\&/g'; }
 UNIT_TEXT="$(sed -e "s|@DIR@|$(esc "$DIR")|g" -e "s|@PORT@|$PORT|g" -e "s|@PYTHON@|$(esc "$PYTHON")|g" \
-                 -e "s|@PATH@|$(esc "$SVC_PATH")|g" -e "s|@TARGET@|$TARGET|g" "$DIR/workbench.service")"
+                 -e "s|@PATH@|$(esc "$SVC_PATH")|g" -e "s|@TARGET@|$TARGET|g" -e "s|@ARGS@|$(esc "$ARGS")|g" \
+                 "$DIR/workbench.service")"
 grep -q '@[A-Z]*@' <<<"$UNIT_TEXT" && die "internal error: unfilled placeholder in the service file"
 
 if [ "$MODE" = dry ]; then
@@ -81,6 +85,7 @@ systemctl --user restart "$NAME"
 for _ in $(seq 1 20); do
   if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
     say "✓ Claude Workbench is running: http://127.0.0.1:$PORT/"
+    [ -n "$ARGS" ] && echo "  phone access over Tailscale: ./tailscale-remote.sh --url --port $PORT"
     echo "  starts automatically when you log in · logs: journalctl --user -u $NAME -f"
     echo "  restart: the ⏻ button in the page, or systemctl --user restart $NAME · remove: $0 --uninstall"
     exit 0

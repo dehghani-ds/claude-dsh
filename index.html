@@ -432,6 +432,22 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .tok-days .today{color:var(--text);font-weight:700}
 .tok-note{font-size:12px;color:var(--muted)}
 @media (max-width:640px){.tok-tiles,.tok-cols{grid-template-columns:1fr}.tok-tile .big{font-size:20px}}
+/* "open on your phone": the tailnet URL, big enough to read off the screen and type */
+.rem-url{display:flex;gap:8px;align-items:center;margin:4px 0 14px}
+.rem-url code{flex:1;min-width:0;overflow-x:auto;white-space:nowrap;font-size:15px;padding:9px 11px;
+  border:1px solid var(--border);border-radius:8px;background:var(--panel2)}
+#remoteBody ol{margin:0;padding-left:20px;line-height:1.7}
+#remoteBody .hint{color:var(--muted);font-size:12px;margin-top:12px;line-height:1.6}
+#remoteBody code.inline{background:var(--panel2);border-radius:4px;padding:1px 4px}
+.rem-switch{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 12px;border:1px solid var(--border);border-radius:9px}
+.rem-switch .lamp{width:10px;height:10px;border-radius:50%;background:var(--muted);flex:none}
+.rem-switch.on .lamp{background:var(--c-green);box-shadow:0 0 0 3px color-mix(in srgb,var(--c-green) 25%,transparent)}
+.rem-switch .what{flex:1;line-height:1.4}
+.rem-switch .what small{display:block;color:var(--muted)}
+/* the 📱 button is dimmed while remote access is off, so you can see at a glance whether it's on */
+#remoteBtn:not(.on){filter:grayscale(1);opacity:.55}
+#remoteBtn.on{position:relative}
+#remoteBtn.on::after{content:"";position:absolute;right:2px;top:2px;width:7px;height:7px;border-radius:50%;background:var(--c-green)}
 /* ⋯ actions menu for a chat (also on right-click) */
 .more-btn{font-weight:700;letter-spacing:1px}
 #sessions .item{padding-right:36px}
@@ -591,14 +607,17 @@ input.rename{font:inherit;font-weight:600;width:100%;padding:1px 6px;border-colo
     <div class="brand" data-tip="Local web UI for your Claude Code sessions.
 Reads ~/.claude/projects directly; groups &amp; tags are stored in workbench.db."><span>✳</span> Claude Workbench</div>
     <button class="ghost restart" id="restartBtn" onclick="restartServer()" aria-label="Restart server" data-tip="Restart the dashboard server">⏻</button>
+    <button class="ghost remote" id="remoteBtn" hidden onclick="openRemote()" aria-label="Remote access" data-tip="Remote access from your phone (Tailscale)">📱</button>
     <button class="ghost bell" id="bellBtn" onclick="openNews()" aria-label="Claude Code updates" data-tip="Claude Code updates: new versions, CLI changes and session-format changes that may affect this dashboard">🔔<span class="count" id="bellCount" hidden></span></button>
     <button class="ghost" data-tip="Manage groups &amp; tags: rename, recolor, reorder, delete" aria-label="Manage groups and tags" onclick="openManage()">⚙</button>
     <button class="ghost" data-tip="Switch between light and dark theme" aria-label="Toggle theme" onclick="toggleTheme()">◐</button>
     <button class="ghost" data-tip="Reload projects, sessions, groups and tags from disk" aria-label="Refresh" onclick="loadProjects()">↻</button>
   </div>
   <div class="search-row">
-    <input id="projSearch" placeholder="Filter projects or #tag…" data-tip="Filter by folder path or tag name.
-Start with # to match tags only, e.g. #java" oninput="renderProjects()">
+    <input id="projSearch" placeholder="Filter, #tag or n:chat…" data-tip="Filter by folder path or tag name.
+Start with # to match tags only, e.g. #java
+Start with n: to search chat names and prompts in every folder, e.g. n:login
+Enter opens the first match · Ctrl+F jumps here with n: · Alt+↑/↓ moves between groups" oninput="renderProjects()">
     <div class="seg" id="viewSeg">
       <button data-v="grouped" onclick="setProjView('grouped')" data-tip="Grouped view: folders under their group headings" aria-label="Grouped view">▦</button>
       <button data-v="list" onclick="setProjView('list')" data-tip="List view: all folders in one list, most recently used first" aria-label="List view">☰</button>
@@ -655,7 +674,7 @@ Your chats are listed below under the worktree they ran in.">Git worktrees <span
       <div id="wtList" hidden></div>
     </details>
   </section>
-  <input class="search" id="sessSearch" placeholder="Search sessions…" data-tip="Search session titles, first and last prompts" oninput="renderSessions()">
+  <input class="search" id="sessSearch" placeholder="Search sessions…" data-tip="Search session titles, first and last prompts&#10;Enter opens the first match" oninput="renderSessions()">
   <div class="scroll" id="sessions"><div class="empty">Pick a project on the left.</div></div>
 </div>
 
@@ -674,6 +693,7 @@ Your chats are listed below under the worktree they ran in.">Git worktrees <span
     <button class="ghost" id="copyBtn" data-tip="Copy a command that continues this exact chat in your terminal:
 cd <folder> && claude --resume <id>" onclick="copyResume()" hidden>⧉ Terminal cmd</button>
     <button class="ghost" id="chatDesktopBtn" onclick="openInDesktop(state.session, state.cwd)" hidden aria-label="Open in Claude Desktop" data-tip="Open this chat in the Claude Desktop app (claude --desktop --resume)">🖥</button>
+    <button class="ghost" id="chatPhoneBtn" onclick="continueOnPhone(state.session, state.cwd)" hidden aria-label="Continue on your phone" data-tip="Continue this chat from your phone: send prompts and approve actions in the Claude mobile app (or claude.ai/code) while it keeps running on this laptop (claude --remote-control)">📱</button>
     <button class="ghost" id="chatShellBtn" data-tip="Open a terminal window in this chat's working folder" aria-label="Open shell here" onclick="openShell(state.cwd)" hidden>&gt;_</button>
     <button class="profile" id="profileBtn" onclick="toggleProfile(event)" aria-label="Your account and usage" aria-haspopup="dialog">
       <svg viewBox="0 0 36 36" aria-hidden="true"><circle class="ring-bg" cx="18" cy="18" r="16"/><circle class="ring" id="profileRing" cx="18" cy="18" r="16"/></svg>
@@ -860,6 +880,10 @@ Empty = worktree-<name>" placeholder="" list="wtBranchList" autocomplete="off">
     <h3 data-tip="Tags are labels on folders. Unused tags are removed automatically.">Tags</h3><div id="manageTags"></div>
   </div>
 </dialog>
+<dialog id="remoteDlg">
+  <div class="dlg-head"><b style="flex:1">📱 Open on your phone</b><button class="ghost" onclick="remoteDlg.close()" data-tip="Close (Esc)" aria-label="Close">✕</button></div>
+  <div class="dlg-body" id="remoteBody"></div>
+</dialog>
 <dialog id="tokDlg" aria-labelledby="tokTitle">
   <div class="dlg-head"><b id="tokTitle" style="flex:1">📊 Token usage</b>
     <button class="ghost" onclick="loadTokens()" data-tip="Count again now (reads the session files on this machine — no model call)">↻ Refresh</button>
@@ -901,9 +925,22 @@ const state = { projects: [], project: null, sessions: [], session: null, cwd: n
 const $ = id => document.getElementById(id);
 const store = { get(k){try{return localStorage.getItem(k)}catch{return null}}, set(k,v){try{localStorage.setItem(k,v)}catch{}} };
 
+/* The token is minted per server run, so a restart invalidates the copy baked into this page —
+   likely when the dashboard is open on a phone for days, or restarted from another device.
+   Fetch the page again instead of failing every call with "forbidden". */
+let staleReload = false;
+function staleToken() {
+  if (!staleReload) {
+    staleReload = true;
+    try { toast("The server restarted — reloading…"); } catch { }
+    setTimeout(() => location.reload(), 600);
+  }
+  return new Promise(() => { });  // never settles: this page is on its way out
+}
 async function api(path, body) {
   const r = await fetch(path, { method: body ? "POST" : "GET", headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined });
+  if (r.status === 403) return staleToken();
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
@@ -1094,7 +1131,22 @@ function metaMatches(m) {
   }
   return true;
 }
-const searchQ = () => $("projSearch").value.trim().toLowerCase();
+const searchQ = () => { const q = $("projSearch").value.trim().toLowerCase(); return q === "n:" ? "" : q; };
+/* n:<text> searches chat names and prompts in every folder (the server reads them all), like `claude agents` */
+const nameQuery = () => { const q = searchQ(); return q.startsWith("n:") ? q.slice(2).trim() : null; };
+state.nameHits = null;  // {q, by: Map(project key -> [chat])} for the current n: query
+let nameTimer = null;
+function ensureNameHits() {
+  const q = nameQuery();
+  if (q === null || state.nameHits?.q === q) return;
+  clearTimeout(nameTimer);
+  nameTimer = setTimeout(async () => {
+    let list; try { list = await api("/api/chatsearch?q=" + encodeURIComponent(q)); } catch (e) { toast(e.message); return; }
+    if (nameQuery() !== q) return;  // typed on meanwhile
+    const by = new Map(); for (const c of list) (by.get(c.project) || by.set(c.project, []).get(c.project)).push(c);
+    state.nameHits = { q, by }; renderProjects();
+  }, 180);
+}
 function textMatches(text, m) {
   const q = searchQ(); if (!q) return true;
   const tagNames = m.tags.map(id => tagById(id)?.name.toLowerCase() || "");
@@ -1114,6 +1166,11 @@ function knownChats(p) {
 }
 /* a directory is shown if it matches, or if some of its chats do (then only those are listed) */
 function dirEntry(p) {
+  const nq = nameQuery();
+  if (nq !== null) {  // only chats match; the folder is shown to hold them
+    const chats = (state.nameHits?.q === nq && state.nameHits.by.get(p.key) || []).filter(c => metaMatches(chatOf(c.id)) || metaMatches(folderOf(p.cwd)));
+    return chats.length ? { p, only: pinFirst(chats, chatPinned) } : null;
+  }
   if (!filtersOn() || dirSelfMatches(p)) return { p, only: null };
   const chats = knownChats(p).filter(chatMatches);
   return chats.length ? { p, only: chats } : null;
@@ -1147,6 +1204,40 @@ async function openChatFromTree(key, sid) {
   if (key && state.project?.key !== key && state.projects.some(p => p.key === key)) await selectProject(key, true);
   openSession(sid);
 }
+/* Enter in a search box opens the first match: a chat if chats matched, otherwise the folder */
+$("projSearch").addEventListener("keydown", e => {
+  if (e.key !== "Enter" || e.isComposing) return;
+  e.preventDefault();
+  const el = $("projects").querySelector(".pchat, .item"); if (!el) return;
+  if (el.classList.contains("pchat")) return openChatFromTree(el.dataset.key, el.dataset.sid);
+  const chat = el.dataset.only && el.nextElementSibling?.querySelector(".pchat");
+  if (chat) return openChatFromTree(chat.dataset.key, chat.dataset.sid);
+  toggleProjOpen(el.dataset.key, true); selectProject(el.dataset.key);
+});
+/* shortcuts like `claude agents`: Ctrl+F finds a chat by name (again: the browser's own find),
+   Alt+↑/↓ jumps between groups in the sidebar */
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+    if (document.activeElement === $("projSearch") || document.querySelector("dialog[open]")) return;
+    e.preventDefault();
+    if (document.body.classList.contains("left-collapsed")) toggleLeft(false);
+    if (innerWidth <= 900) setView("left");
+    const box = $("projSearch");
+    if (!box.value.trim().toLowerCase().startsWith("n:")) { box.value = "n:"; renderProjects(); }
+    box.focus(); box.setSelectionRange(box.value.length, box.value.length);
+  } else if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+    const heads = [...$("projects").querySelectorAll(".group-head")]; if (!heads.length) return;
+    e.preventDefault();
+    const cur = heads.indexOf(document.activeElement.closest?.(".group") ? document.activeElement.closest(".group").querySelector(".group-head") : null);
+    const next = heads[cur < 0 ? (e.key === "ArrowDown" ? 0 : heads.length - 1) : (cur + (e.key === "ArrowDown" ? 1 : heads.length - 1)) % heads.length];
+    next.focus(); next.scrollIntoView({ block: "nearest" });
+  }
+});
+$("sessSearch").addEventListener("keydown", e => {
+  if (e.key !== "Enter" || e.isComposing) return;
+  e.preventDefault();
+  const el = $("sessions").querySelector(".item[data-sid]"); if (el) openSession(el.dataset.sid);
+});
 
 function chatChips(sid, withGroup) {
   const m = chatOf(sid), g = withGroup && state.meta.groups.find(x => x.id === m.group);
@@ -1164,7 +1255,7 @@ function treeChat(key, c, loose) {
   const folder = loose ? (c.cwd ? tilde(c.cwd) : "") : "";
   const tip = `${c.title}\n${c.mtime ? "Last active " + new Date(c.mtime * 1000).toLocaleString() : ""}` + (c.cwd ? `\nFolder: ${c.cwd}` : "") +
     `\nClick to open · double-click to rename · ⋯ or right-click for more${loose ? "" : " · drag onto a group to add it there"}`;
-  return `<div class="pchat ${loose ? "loose" : ""} ${state.session === c.id ? "active" : ""}" draggable="true" data-sid="${esc(c.id)}"
+  return `<div class="pchat ${loose ? "loose" : ""} ${state.session === c.id ? "active" : ""}" draggable="true" data-sid="${esc(c.id)}" data-key="${esc(key || "")}"
       onclick='sessionClick(event, ${J(c.id)}, ${J(key)})' oncontextmenu='sessionMenu(event, ${J(c.id)}, ${J(key)})' ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')" data-tip="${tipAttr(tip)}">
     <div class="prow"><span class="pt">${chatPinned(c) && !loose ? pinMark("chat", c.id, "its folder") : ""}${ICON_CHAT}${chatBadge(c.id)}${noteBadge(c.id)}<span class="ttl">${esc(c.title || "(untitled)")}</span></span>
       <span class="pa">${c.mtime ? ago(c.mtime) : ""}</span>
@@ -1193,7 +1284,7 @@ function projectItem(p, only) {
       (!list.length ? '<div class="pmore" style="color:var(--muted)">No chats</div>' : "") +
       (only ? `<div class="pmore" style="color:var(--muted)">${only.length} matching chat${only.length === 1 ? "" : "s"} shown</div>` : "")}</div>`;
   }
-  return `<div class="item ${open ? "open" : ""} ${state.project?.key === p.key ? "active" : ""}" draggable="true" data-cwd="${esc(p.cwd)}" data-tip="${tipAttr(tip)}"
+  return `<div class="item ${open ? "open" : ""} ${state.project?.key === p.key ? "active" : ""}" draggable="true" data-cwd="${esc(p.cwd)}" data-key="${esc(p.key)}" ${only ? 'data-only="1"' : ""} data-tip="${tipAttr(tip)}"
       onclick="clickProject('${esc(p.key)}')" ondragstart="dragStart(event)" ondragend="this.classList.remove('dragging')">
     <button class="ghost edit" data-tip="Set group and tags for this folder" aria-label="Edit group and tags" onclick='event.stopPropagation();openFolderDlg(${JSON.stringify(p.cwd)})'>🏷</button>
     ${p.exists ? `<button class="ghost edit shell" data-tip="${SHELL_TIP}" aria-label="Open shell here" onclick='event.stopPropagation();openShell(${JSON.stringify(p.cwd)})'>&gt;_</button>` : ""}
@@ -1205,8 +1296,11 @@ function projectItem(p, only) {
 }
 function renderProjects() {
   if (state.renaming) { state.redrawAfterRename = true; return; }  // don't wipe the rename box
-  renderFilterBar();
+  renderFilterBar(); ensureNameHits();
   const entries = pinFirst(state.projects.map(dirEntry).filter(Boolean), e => folderOf(e.p.cwd).pinned);
+  if (nameQuery() !== null && state.nameHits?.q !== nameQuery()) {
+    $("projects").innerHTML = '<div class="empty"><span class="spinner"></span> Searching chat names…</div>'; renderGroupFoldAll(); return;
+  }
   const sections = [...pinFirst(state.meta.groups, g => g.pinned).map(g => ({ id: g.id, name: g.name, color: g.color, pinned: !!g.pinned })),
     { id: 0, name: "Ungrouped", color: "slate" }];
   const filtering = filtersOn();
@@ -1227,7 +1321,8 @@ function renderProjects() {
     const looseHtml = loose.map(c => treeChat(c.project, c, true)).join("");
     return `<div class="group ${isCollapsed ? "collapsed" : ""}" data-group="${g.id}"
         ondragover="dragOver(event)" ondragleave="this.classList.remove('drop')" ondrop="dropOn(event, ${g.id})">
-      <div class="group-head" onclick="groupHeadClick(event, ${g.id})" data-tip="${tipAttr(`${g.id ? "Group" : "Folders without a group"}: ${g.name}\nClick to ${isCollapsed ? "expand" : "collapse"}${g.id ? " · double-click to rename" : ""} · drop a folder or chat here to add it`)}"><span class="caret">▼</span><span class="dot" style="--cc:var(--c-${g.color})" data-tip="Group color: ${g.color} (change it in ⚙)"></span><span class="gname">${esc(g.name)}</span>${g.pinned ? pinMark("group", g.id, "the sidebar") : ""}<span class="n" data-tip="${items.length} folder${items.length === 1 ? "" : "s"}${loose.length ? ` + ${loose.length} chat${loose.length === 1 ? "" : "s"}` : ""}${filtering ? " match the filter" : ""}">${n}</span>${g.id && !g.pinned ? `<button class="ghost gpin" data-tip="Pin this group to the top of the sidebar" aria-label="Pin group" onclick="event.stopPropagation();setPin('group', ${g.id}, true)">📌</button>` : ""}</div>
+      <div class="group-head" tabindex="0" role="button" aria-expanded="${!isCollapsed}" onclick="groupHeadClick(event, ${g.id})"
+        onkeydown="if((event.key==='Enter'||event.key===' ')&&event.target===this){event.preventDefault();toggleGroup(${g.id});document.querySelector('#projects .group[data-group=&quot;${g.id}&quot;] .group-head')?.focus()}" data-tip="${tipAttr(`${g.id ? "Group" : "Folders without a group"}: ${g.name}\nClick to ${isCollapsed ? "expand" : "collapse"}${g.id ? " · double-click to rename" : ""} · drop a folder or chat here to add it`)}"><span class="caret">▼</span><span class="dot" style="--cc:var(--c-${g.color})" data-tip="Group color: ${g.color} (change it in ⚙)"></span><span class="gname">${esc(g.name)}</span>${g.pinned ? pinMark("group", g.id, "the sidebar") : ""}<span class="n" data-tip="${items.length} folder${items.length === 1 ? "" : "s"}${loose.length ? ` + ${loose.length} chat${loose.length === 1 ? "" : "s"}` : ""}${filtering ? " match the filter" : ""}">${n}</span>${g.id && !g.pinned ? `<button class="ghost gpin" data-tip="Pin this group to the top of the sidebar" aria-label="Pin group" onclick="event.stopPropagation();setPin('group', ${g.id}, true)">📌</button>` : ""}</div>
       <div class="group-body">${looseHtml}${items.map(e => projectItem(e.p, e.only)).join("") || (looseHtml ? "" : '<div class="s" style="padding:8px 14px;color:var(--muted);font-size:12px" data-tip="Drag a folder or chat here, or use 🏷">Drag folders or chats here</div>')}</div></div>`;
   }).join("");
   $("projects").innerHTML = html || '<div class="empty">Nothing matches.</div>';
@@ -2024,13 +2119,28 @@ async function sendPrompt(chat, prompt) {
   try {
     const r = await fetch("/api/chat", { method: "POST", headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
       body: JSON.stringify({ cwd: chat.cwd, sessionId: chat.session, prompt: fullPrompt, permissionMode: $("permMode").value, model: $("model").value, effort: $("effort").value }) });
+    if (r.status === 403) return staleToken();
     if (!r.ok) throw new Error((await r.json()).error);
     await followStream(chat, st, r);
   } catch (e) {
     if (!delivered && sentCtx.length) { chat.shellCtx = sentCtx.concat(chat.shellCtx); if (state.chat === chat) renderShellCtx(); }  // Claude never got them: keep for next time
     const d = document.createElement("div"); d.className = "meta-line errbox"; d.textContent = e.message; pane.appendChild(d);
+    authHint(e.message, pane, chat.cwd, st);
   }
   return endRun(chat, st);
+}
+/* a revoked or expired claude.ai login: since Claude Code 2.1.287 the -p error starts with "Failed to authenticate"
+   (older versions: a bare "API Error: 401"). Say plainly what to do instead of showing only the raw error. */
+const AUTH_RE = /Failed to authenticate|OAuth token (has been )?revoked|authentication_error|API Error: 401\b/i;
+const AUTH_HINT = "Claude Code is logged out: your claude.ai login was revoked or has expired. In a terminal run claude, type /login, then send your message again.";
+function authHint(text, pane, cwd, st) {
+  if (!AUTH_RE.test(text || "") || st.authHinted) return;
+  st.authHinted = true;  // a failed run can report it twice (result event, then the exit code)
+  const d = document.createElement("div"); d.className = "meta-line errbox auth-hint";
+  d.innerHTML = `🔑 <b>Claude Code is logged out</b> — your claude.ai login was revoked or has expired. Run <code>claude</code> in a terminal, type <code>/login</code>, then send your message again.
+    <button class="ghost" style="margin-left:6px">&gt;_ Open a terminal</button>`;
+  d.querySelector("button").onclick = () => openShell(cwd);
+  pane.appendChild(d);
 }
 /* draws a run's events into its chat — for a new reply, and when reconnecting after a reload (from = events already seen) */
 function streamInto(chat, from) {
@@ -2079,6 +2189,7 @@ function streamInto(chat, from) {
           (ev.total_cost_usd != null ? `\nCost of this reply: $${ev.total_cost_usd.toFixed(4)}` : "") +
           (ev.num_turns ? `\nTurns: ${ev.num_turns} (one per model call, including tool use)` : "");
         pane.appendChild(line);
+        if (ev.is_error) authHint(ev.result, pane, chat.cwd, st);
         if (ev.permission_denials?.length) {
           const d = document.createElement("div"); d.className = "meta-line"; d.style.color = "var(--warn)";
           d.dataset.tip = "Denied: " + ev.permission_denials.map(x => x.tool_name).join(", ");
@@ -2090,7 +2201,7 @@ function streamInto(chat, from) {
       case "ui_error": {
         st.ended = true;
         const d = document.createElement("div"); d.className = "meta-line errbox"; d.textContent = `claude exited (${ev.code}): ${ev.text}`; d.dataset.tip = "The claude process ended with an error. The message above may be incomplete.";
-        pane.appendChild(d); break;
+        pane.appendChild(d); authHint(ev.text, pane, chat.cwd, st); break;
       }
     }
   };
@@ -2104,6 +2215,7 @@ async function followStream(chat, st, first) {
   for (let tries = 0; tries < 5; tries++) {
     if (!r) {
       r = await fetch(`/api/run/stream?run=${chat.run}&from=${st.seen}`, { headers: { "X-Token": TOKEN } });
+      if (r.status === 403) return staleToken();
       if (!r.ok) throw new Error((await r.json()).error);
     }
     await readNdjson(r, st.handle);
@@ -2224,6 +2336,7 @@ async function runShell(cmd, chat = state.chat) {
   try {
     const r = await fetch("/api/shell", { method: "POST", headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
       body: JSON.stringify({ cwd: where, cmd }) });
+    if (r.status === 403) return staleToken();
     if (!r.ok) throw new Error((await r.json()).error);
     await readNdjson(r, ev => {
       if (ev.type === "ui_run") chat.run = ev.run;
@@ -2515,6 +2628,7 @@ function sessionMenu(e, sid, key) {
       run: () => copyText(`cd ${q(info.cwd)} && claude --resume ${sid}`, "resume command") },
     { icon: ">_", label: "Open terminal in its folder", tip: info.cwd, run: () => openShell(info.cwd) },
     ...(state.desktopOk ? [{ icon: "🖥", label: "Open in Claude Desktop", tip: "Continue this chat in the Claude Desktop app (claude --desktop --resume)", run: () => openInDesktop(sid, info.cwd) }] : []),
+    ...(state.remoteOk ? [{ icon: "📱", label: "Continue on phone…", tip: "Send prompts and approve actions from the Claude mobile app (or claude.ai/code) while it runs on this laptop (claude --remote-control)", run: () => continueOnPhone(sid, info.cwd) }] : []),
     { icon: "#", label: "Copy session ID", tip: sid, run: () => copyText(sid, "session ID") },
     ...(chat?.busy ? ["-", { icon: "■", label: "Stop the running reply", danger: true, tip: "Stop what Claude is doing in this chat",
       run: async () => { if (chat.run) { await api("/api/stop", { run: chat.run }); toast("Stopped"); } } }] : []),
@@ -2827,7 +2941,7 @@ function renderProfile() {
   $("profileBtn").classList.remove("warn", "bad");
   if (limitLevel(pct)) $("profileBtn").classList.add(limitLevel(pct));
   $("profileBtn").dataset.tip = `${p.name || p.fullName || "Claude account"}${p.email ? " · " + p.email : ""}\n` +
-    (sess ? `5-hour limit: ${sess.percent}% used — ${resetsIn(sess.resets_at)}` : p.usageError ? "Usage unavailable: " + p.usageError : "Usage unknown") +
+    (sess ? `5-hour limit: ${sess.percent}% used — ${resetsIn(sess.resets_at)}` : AUTH_RE.test(p.usageError) ? AUTH_HINT : p.usageError ? "Usage unavailable: " + p.usageError : "Usage unknown") +
     (p.limits || []).filter(l => l.kind !== "session").map(l => `\n${limitName(l)}: ${l.percent}%`).join("") + "\nClick for details";
   if ($("profileCard")) fillProfileCard();
 }
@@ -2850,7 +2964,7 @@ function fillProfileCard() {
       <div class="row"><span>${esc(limitName(l))}</span><span>${l.percent}%</span></div>
       <div class="bar"><i class="${limitLevel(l.percent)}" style="width:${Math.min(100, l.percent)}%"></i></div>
       <small>${esc(resetsIn(l.resets_at))}${l.severity === "critical" ? " · limit reached" : ""}</small></div>`).join("")
-      : `<div class="lim"><small>${esc(p.usageError ? "Usage unavailable: " + p.usageError : "Loading usage…")}</small></div>`) +
+      : `<div class="lim"><small>${esc(AUTH_RE.test(p.usageError) ? "🔑 " + AUTH_HINT : p.usageError ? "Usage unavailable: " + p.usageError : "Loading usage…")}</small></div>`) +
     (p.extra && p.extra.is_enabled ? `<div class="lim"><div class="row"><span>Extra usage</span><span>${Math.round((p.extra.utilization || 0))}%</span></div><small>${p.extra.used_credits} of ${p.extra.monthly_limit} ${esc(p.extra.currency || "")} this month</small></div>` : "") +
     `<button class="tokbtn" onclick="openTokens()" data-tip="Tokens used in the 5-hour window, today and this week — per chat and per model">📊 Token usage…</button>` +
     `<div class="foot"><span>${p.usageAt ? "Updated " + ago(p.usageAt) : ""}${p.auth && p.auth !== "none" ? " · using " + esc(p.auth) : ""}</span>
@@ -2881,6 +2995,7 @@ async function loadTokens() {
   finally { $("tokBody").classList.remove("stale"); }
   renderTokens();
 }
+const hitRate = w => { const p = w.input + w.cacheWrite + w.cacheRead; return p ? Math.round(w.cacheRead / p * 1000) / 10 : null; };
 function setTokWin(w) { tokWin = w; store.set("tokWin", w); renderTokens(); }
 function tokSpan(k, w) {
   if (k === "today") return "since midnight";
@@ -2906,7 +3021,9 @@ function renderTokens() {
   const pct = n => w.total ? (n / w.total * 100 < 1 && n ? "<1" : Math.round(n / w.total * 100)) + "%" : "";
   const breakdown = `<table class="tok-tbl"><tbody>` +
     rows.map(([k, n, tip]) => `<tr data-tip="${tipAttr(tip + "\n" + fullTok(n))}"><td>${k}</td><td class="n">${fmtTok(n)}</td><td class="sub">${pct(n)}</td></tr>`).join("") +
-    `<tr><td><b>Total</b></td><td class="n"><b>${fmtTok(w.total)}</b></td><td class="sub">${w.calls.toLocaleString()} calls</td></tr></tbody></table>`;
+    `<tr><td><b>Total</b></td><td class="n"><b>${fmtTok(w.total)}</b></td><td class="sub">${w.calls.toLocaleString()} calls</td></tr>` +
+    (hitRate(w) != null ? `<tr data-tip="${tipAttr("Share of the prompt (input + cache write + cache read) that was read from the cache.\nHigher is cheaper and faster; it drops when a chat starts, after a long pause (the cache expires), or after /compact.")}">
+      <td>Cache hit rate</td><td class="n">${hitRate(w)}%</td><td class="sub"></td></tr>` : "") + `</tbody></table>`;
   const top = w.models[0]?.tokens || 1;
   const models = w.models.length ? `<table class="tok-tbl"><tbody>` + w.models.map(m => `<tr data-tip="${tipAttr(m.model + "\n" + fullTok(m.tokens))}">
       <td>${esc(m.model.replace(/^claude-/, ""))}<div class="meter" style="width:${Math.max(1, m.tokens / top * 100)}%"></div></td>
@@ -2923,12 +3040,12 @@ function renderTokens() {
   const dt = d => d.input + d.output + d.cacheWrite + d.cacheRead;
   const max = Math.max(1, ...T.days.map(dt)), peak = T.days.reduce((a, d, i) => dt(d) > dt(T.days[a]) ? i : a, 0), last = T.days.length - 1;
   const bars = T.days.map((d, i) => { const h = dt(d) / max * 100;
-    return `<div class="tbar" tabindex="0" role="img" aria-label="${esc(dayName(d.day))}: ${fullTok(dt(d))}" data-tip="${tipAttr(`${dayName(d.day)}${i === last ? " (today)" : ""}\nTotal ${fullTok(dt(d))}\nOutput ${d.output.toLocaleString()} · Input ${d.input.toLocaleString()}\nCache write ${d.cacheWrite.toLocaleString()} · Cache read ${d.cacheRead.toLocaleString()}`)}">
+    return `<div class="tbar" tabindex="0" role="img" aria-label="${esc(dayName(d.day))}: ${fullTok(dt(d))}" data-tip="${tipAttr(`${dayName(d.day)}${i === last ? " (today)" : ""}\nTotal ${fullTok(dt(d))}\nOutput ${d.output.toLocaleString()} · Input ${d.input.toLocaleString()}\nCache write ${d.cacheWrite.toLocaleString()} · Cache read ${d.cacheRead.toLocaleString()}` + (hitRate(d) != null ? `\nCache hit rate ${hitRate(d)}%` : ""))}">
       ${i === peak || i === last ? `<b style="bottom:calc(${h}% + 3px)">${fmtTok(dt(d))}</b>` : ""}<i style="height:${h}%"></i></div>`; }).join("");
   const days = T.days.map((d, i) => `<span class="${i === last ? "today" : ""}">${i === last ? "Today" : new Date(d.day * 1000).toLocaleDateString([], { weekday: "short" })}</span>`).join("");
   const table = `<details><summary class="tok-note">Show the days as a table</summary><table class="tok-tbl"><tbody>
-    <tr><td class="tok-note">Day</td><td class="sub">Output</td><td class="sub">Input</td><td class="sub">Cache write</td><td class="sub">Cache read</td><td class="sub">Total</td></tr>` +
-    T.days.map(d => `<tr><td>${esc(dayName(d.day))}</td><td class="n">${fmtTok(d.output)}</td><td class="n">${fmtTok(d.input)}</td><td class="n">${fmtTok(d.cacheWrite)}</td><td class="n">${fmtTok(d.cacheRead)}</td><td class="n"><b>${fmtTok(dt(d))}</b></td></tr>`).join("") +
+    <tr><td class="tok-note">Day</td><td class="sub">Output</td><td class="sub">Input</td><td class="sub">Cache write</td><td class="sub">Cache read</td><td class="sub">Hit rate</td><td class="sub">Total</td></tr>` +
+    T.days.map(d => `<tr><td>${esc(dayName(d.day))}</td><td class="n">${fmtTok(d.output)}</td><td class="n">${fmtTok(d.input)}</td><td class="n">${fmtTok(d.cacheWrite)}</td><td class="n">${fmtTok(d.cacheRead)}</td><td class="n">${hitRate(d) != null ? hitRate(d) + "%" : "–"}</td><td class="n"><b>${fmtTok(dt(d))}</b></td></tr>`).join("") +
     `</tbody></table></details>`;
   $("tokBody").innerHTML = `<div class="tok-tiles">${tiles}</div>
     <div class="tok-cols"><div><h3>${TOK_WINS[tokWin][0]} · breakdown</h3>${breakdown}</div><div><h3>By model</h3>${models}</div></div>
@@ -2955,7 +3072,25 @@ document.addEventListener("keydown", e => {
 if (store.get("leftCollapsed")) toggleLeft(true);
 
 /* ---------- open a chat in the Claude Desktop app (claude --desktop), when this claude supports it ---------- */
-function renderDesktopBtn() { $("chatDesktopBtn").hidden = !(state.desktopOk && state.chat?.session); }
+function renderDesktopBtn() {
+  $("chatDesktopBtn").hidden = !(state.desktopOk && state.chat?.session);
+  $("chatPhoneBtn").hidden = !(state.remoteOk && state.chat?.session);
+}
+/* 📱 continue a chat from your phone: a terminal window on this laptop runs it with Remote Control
+   (claude --resume <id> --remote-control), and the Claude mobile app or claude.ai/code drives it */
+async function continueOnPhone(sid, cwd) {
+  if (!sid || !cwd) return;
+  const c = state.chats.get(sid), title = sessionInfo(sid).title;
+  if (c?.busy) return toast("Claude is still replying in this chat here — wait for it to finish, then continue it on your phone");
+  if (!confirm(`Continue “${title}” on your phone?\n\n` +
+    "A terminal window opens on this laptop running this chat with Remote Control. Then open the Claude app on your phone → Code " +
+    `(or claude.ai/code in a browser) and pick “${title}”.\n\n` +
+    "• The chat runs here, the phone controls it: keep the laptop awake and the window open.\n" +
+    "• While it's on your phone, don't send to this chat from the dashboard — both would write to the same session. Reopen it here afterwards to see everything.\n" +
+    "• To stop: type /exit in that window, or close it.")) return;
+  try { await api("/api/open-remote", { cwd, sessionId: sid, name: title }); toast("Opened a terminal with Remote Control — now open the Claude app on your phone → Code"); }
+  catch (e) { toast("Couldn't start Remote Control: " + e.message); }
+}
 async function openInDesktop(sid, cwd) {
   if (!sid || !cwd) return;
   const c = state.chats.get(sid);
@@ -3084,7 +3219,7 @@ loadModels();
 
 /* ---------- ⏻ restart the dashboard server (e.g. after server.py changed) ---------- */
 async function loadStatus() {
-  let st; try { st = await api("/api/status"); state.desktopOk = !!st.desktop; renderDesktopBtn(); } catch (e) {
+  let st; try { st = await api("/api/status"); state.desktopOk = !!st.desktop; state.remoteOk = !!st.remote; renderDesktopBtn(); } catch (e) {
     if (e.message === "not found") { $("restartBtn").classList.add("needed");
       $("restartBtn").dataset.tip = "⚠ The running server is older than this page and must be restarted once by hand:\n" +
         "systemctl --user restart workbench   (service)\nor Ctrl+C + python3 server.py   (terminal)"; }
@@ -3097,6 +3232,57 @@ async function loadStatus() {
       : "Restart the dashboard server.\n\n") +
     `Running since ${new Date(st.started * 1000).toLocaleString()}${st.service ? " as the systemd service (workbench)" : ""} · pid ${st.pid}` +
     (st.running ? `\n${st.running} chat/command run${st.running === 1 ? "" : "s"} in progress — a restart stops ${st.running === 1 ? "it" : "them"}.` : "");
+  state.ts = st.tailscale; state.port = st.port;
+  renderRemoteBtn();
+  if (remoteDlg.open) renderRemote();
+}
+
+/* ---------- 📱 remote access from a phone, on any network, over Tailscale ----------
+   Off by default: the first server start after the laptop boots disconnects Tailscale. The switch
+   here turns it on: `tailscale up` + `tailscale serve`, which terminates HTTPS on this machine and
+   proxies to the local server. Only devices signed into the same tailnet can reach it. */
+function renderRemoteBtn() {
+  const r = state.ts, b = $("remoteBtn");
+  b.hidden = !r?.installed;
+  b.classList.toggle("on", !!r?.on);
+  b.dataset.tip = r?.on ? "Remote access is ON — open on your phone: " + r.info.url : "Remote access from your phone is off — click to turn it on";
+}
+function openRemote() { renderRemote(); remoteDlg.showModal(); }
+const viaTailnet = () => !["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
+function renderRemote() {
+  const r = state.ts;
+  if (!r?.installed) return $("remoteBody").innerHTML = `<div class="empty">Tailscale isn't installed on this machine — see README.md.</div>`;
+  const t = r.info, busy = state.remoteBusy;
+  const sw = `<div class="rem-switch ${r.on ? "on" : ""}"><span class="lamp"></span>
+      <div class="what"><b>Remote access is ${r.on ? "on" : "off"}</b>
+        <small>${r.on ? "Your devices on Tailscale can open this dashboard." : "Off after every restart of this computer. Nothing can reach the dashboard from outside."}</small></div>
+      <button class="${r.on ? "danger" : "primary"}" ${busy ? "disabled" : ""} onclick="setRemote(${!r.on})">
+        ${busy ? `<span class="spinner"></span> ${r.on ? "Turning off" : "Turning on"}…` : r.on ? "Turn off" : "Turn on"}</button></div>`;
+  if (!r.on) return $("remoteBody").innerHTML = sw + `<div class="hint">Turning it on connects this computer to your tailnet and shares the
+      dashboard over HTTPS with your own devices only (never the public internet). It stays on until you turn it
+      off or the computer restarts.</div>`;
+  $("remoteBody").innerHTML = sw + `
+    <div class="rem-url"><code id="remUrl">${esc(t.url)}</code>
+      <button onclick="copyRemote()" data-tip="Copy the address, e.g. to send it to yourself">Copy</button></div>
+    <ol>
+      <li>Install <b>Tailscale</b> on the phone and sign in with the same account as this computer (<code class="inline">${esc(t.host)}</code>).</li>
+      <li>Switch Tailscale on in the phone app.</li>
+      <li>Open the address above. Everything works there: chats, worktrees, the shell, groups and tags.</li>
+      <li>Use the browser's <b>Add to Home Screen</b> for a full-screen, app-like dashboard.</li>
+    </ol>
+    <div class="hint">Works on mobile data or any wifi — the phone and this computer don't need to share a network.
+      ${viaTailnet() ? "<br><b>You're using it remotely right now:</b> turning it off disconnects this page, and it can only be turned on again at the computer." : ""}</div>`;
+}
+async function setRemote(on) {
+  if (!on && viaTailnet() && !confirm("Turn remote access off?\n\nThis page is open over Tailscale, so it will disconnect — and remote access can only be turned on again at the computer.")) return;
+  state.remoteBusy = true; renderRemote();
+  try { state.ts = await api("/api/remote", { on }); toast(on ? "Remote access is on" : "Remote access is off"); }
+  catch (e) { alert("Couldn't turn remote access " + (on ? "on" : "off") + ":\n\n" + e.message); }
+  finally { state.remoteBusy = false; renderRemoteBtn(); if (remoteDlg.open) renderRemote(); }
+}
+async function copyRemote() {
+  try { await navigator.clipboard.writeText(state.ts.info.url); toast("Address copied"); }
+  catch { toast("Couldn't copy — select the address and copy it by hand"); }
 }
 async function restartServer() {
   const busy = [...state.chats.values()].filter(c => c.busy);

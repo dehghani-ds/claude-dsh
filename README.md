@@ -43,6 +43,45 @@ systemctl --user restart workbench      # restart (or use the ⏻ button in the 
 journalctl --user -u workbench -f       # logs
 ```
 
+## Use it from your phone, on any network (Tailscale)
+
+[Tailscale](https://tailscale.com) puts this computer and your phone on a private network (a "tailnet")
+that works across any internet connection: mobile data, another wifi, behind NAT. The dashboard is
+**not** put on the public internet. Only devices signed in to your tailnet can reach it.
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh   # once, needs sudo: Tailscale's official installer
+sudo tailscale up                                   # once: sign in via the printed link
+./tailscale-remote.sh                               # share the dashboard on the tailnet, print the phone URL
+```
+
+On the phone, install the Tailscale app, sign in with the **same account**, and turn it on. Then open the
+`https://<this-machine>.<tailnet>.ts.net/` address the script printed. You get the full dashboard:
+chats, worktrees, the shell, groups and tags. To make it feel like an app, use *Add to Home Screen*. The
+**📱** button in the sidebar shows the address any time Tailscale is running.
+
+**Remote access is off by default.** The first time the dashboard starts after the computer boots, it
+disconnects Tailscale. To use it from the phone, click **📱** in the sidebar and choose **Turn on**: that
+runs `tailscale up` and shares the dashboard. **Turn off** stops sharing and disconnects Tailscale. The 📱
+icon is grey while off and has a green dot while on. Restarting the server (⏻) doesn't change the setting,
+so you can restart it from the phone. Turning it off from the phone disconnects you, and only the
+computer can turn it back on. The switch needs `sudo tailscale set --operator=$USER` once (the script
+tells you).
+
+`tailscale-remote.sh` uses `tailscale serve`, which gets an HTTPS certificate for this machine and forwards
+to `127.0.0.1:8765`, so the server itself still listens on loopback only. The script is only needed once, for the first setup.
+
+```bash
+./tailscale-remote.sh --url       # print the address (and a QR code if qrencode is installed) again
+./tailscale-remote.sh --off       # stop sharing it
+./tailscale-remote.sh --direct    # no HTTPS: use http://100.x.y.z:8765/ (start the server with --tailscale)
+./install-service.sh --tailscale  # the service, also listening on the tailnet address (for --direct)
+```
+
+The first time, Tailscale prints a link to **enable Serve** for your tailnet. Open it and click Enable;
+the script waits and then carries on. If the script says it can't get a certificate, turn on **MagicDNS** and **HTTPS Certificates** at
+<https://login.tailscale.com/admin/dns>, or use `--direct`.
+
 ---
 
 ## Features
@@ -193,9 +232,13 @@ The server checks four things at start-up, every 6 hours, and when you click **�
 
 ## Good to know
 
-- **Local only.** The server listens on `127.0.0.1` and every request needs a random key that is put into the
-  page on each start, so other sites and other machines can't use it. Anyone logged in as *you* on this
-  computer can, just like your terminal.
+- **Local only, or your tailnet.** The server listens on `127.0.0.1` and every request needs a random key that
+  is put into the page on each start, so other sites and other machines can't use it. Anyone logged in as
+  *you* on this computer can, just like your terminal. With Tailscale (above), your own devices on the
+  tailnet can use it too. Requests from any other address (LAN, internet) and Host names this machine
+  doesn't answer to are refused. **Anyone on your tailnet gets full control**, including the shell, so
+  don't share the tailnet with people you wouldn't hand your terminal to, or restrict it with Tailscale ACLs.
+  Never use `tailscale funnel` for this: that would put it on the public internet.
 - **Which Claude account.** Chats run `claude -p`, which uses `ANTHROPIC_API_KEY` if it's set in the server's
   environment, otherwise your normal `claude` login (your subscription).
 - **Permissions.** In the page Claude can't stop to ask you, so anything the chosen *Mode* doesn't allow is
@@ -211,6 +254,8 @@ The server checks four things at start-up, every 6 hours, and when you click **�
 | Every chat fails at once | You may have hit your usage limit — run `/usage` in a chat to see when it resets. |
 | **>\_** doesn't open a terminal | It needs a desktop session. Set `WORKBENCH_TERMINAL` (e.g. `kitty`) in the service environment to choose the program. |
 | `!` commands can't find a program | The service uses the `PATH` it was installed with — run `./install-service.sh` again from a terminal where the program works. |
+| Phone: page **won't load** | Is Tailscale on (connected) on the phone, with the same account? Check `tailscale status` on this computer and `./tailscale-remote.sh --url`. |
+| Phone: **"forbidden"** | Open the exact address `./tailscale-remote.sh --url` prints. Other names for this machine are refused on purpose. |
 | Worktree features missing | The folder isn't a git repository, or `git` isn't installed. |
 
 ## For developers

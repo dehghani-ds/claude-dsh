@@ -5,6 +5,10 @@ Run:  python3 server.py [--port 8765]
       (or at login as a systemd user service: ./install-service.sh — see README.md)
 Then open the printed URL. Binds to 127.0.0.1 only; every API call needs the
 per-run token that is embedded into the served page.
+
+From a phone (any network): put this machine and the phone on the same Tailscale
+tailnet and run ./tailscale-remote.sh — see README.md. Requests are then accepted
+from tailnet addresses too, and from nowhere else.
 """
 import argparse
 import json
@@ -14,7 +18,9 @@ import select
 import signal
 import re
 import secrets
+import shlex
 import shutil
+import socket
 import sqlite3
 import subprocess
 import sys
@@ -38,6 +44,7 @@ CLAUDE_BIN = shutil.which("claude") or str(HOME / ".local" / "bin" / "claude")
 DB_PATH = Path(os.environ.get("WORKBENCH_DB") or HERE / "workbench.db")
 COLORS = ("slate", "red", "orange", "amber", "green", "teal", "blue", "violet", "pink")
 
+PORT = 8765  # the port actually served; set in main()
 RUNS = {}  # run_id -> Popen
 CHAT_RUNS = {}  # run_id -> ChatRun: Claude replies keep going (and are buffered) when the page goes away
 RUN_KEEP = 15 * 60  # seconds a finished run's events stay available for a page to catch up
@@ -457,6 +464,27 @@ def list_sessions(key):
     return items
 
 
+def search_chats(q, limit=200):
+    """Chats in every folder whose name or first/last prompt contains q — the sidebar's n: filter, like the
+    n:<text> filter in `claude agents`. Uses the cached session metadata, so it's quick after the first listing."""
+    q = (q or "").strip().lower()
+    out = []
+    if not q or not PROJECTS_DIR.is_dir():
+        return out
+    for d in PROJECTS_DIR.iterdir():
+        if not d.is_dir():
+            continue
+        for f in d.glob("*.jsonl"):
+            try:
+                m = session_meta(f)
+            except OSError:
+                continue
+            if q in " ".join(x or "" for x in (m["title"], m["firstPrompt"], m["lastPrompt"])).lower():
+                out.append({"id": m["id"], "title": m["title"], "mtime": m["mtime"], "cwd": m["cwd"], "project": d.name})
+    out.sort(key=lambda m: -m["mtime"])
+    return out[:limit]
+
+
 def find_session_file(session_id):
     if not re.fullmatch(r"[0-9a-fA-F-]{36}", session_id or ""):
         raise ValueError("bad session id")
@@ -768,29 +796,50 @@ def browse(path):
 # Opens a terminal window in a folder on this machine. $WORKBENCH_TERMINAL (or $TERMINAL)
 # picks the program; otherwise the first installed one below is used.
 
-TERMINALS = (  # program, args; the folder is appended to the last arg (None = inherit the cwd)
-    ("gnome-terminal", ["--working-directory="]), ("kgx", ["--working-directory="]),
-    ("ptyxis", ["--new-window", "--working-directory="]), ("konsole", ["--workdir", ""]),
-    ("xfce4-terminal", ["--working-directory="]), ("tilix", ["--working-directory="]),
-    ("terminator", ["--working-directory="]), ("kitty", ["--directory", ""]),
-    ("alacritty", ["--working-directory", ""]), ("wezterm", ["start", "--cwd", ""]),
-    ("foot", ["--working-directory="]), ("x-terminal-emulator", None), ("xterm", None),
+TERMINALS = (  # program, args (the folder is appended to the last one; None = inherit the cwd), what runs a command
+    ("gnome-terminal", ["--working-directory="], ["--"]), ("kgx", ["--working-directory="], ["--"]),
+    ("ptyxis", ["--new-window", "--working-directory="], ["--"]), ("konsole", ["--workdir", ""], ["-e"]),
+    ("xfce4-terminal", ["--working-directory="], ["-x"]), ("tilix", ["--working-directory="], ["-e"]),
+    ("terminator", ["--working-directory="], ["-x"]), ("kitty", ["--directory", ""], []),
+    ("alacritty", ["--working-directory", ""], ["-e"]), ("wezterm", ["start", "--cwd", ""], ["--"]),
+    ("foot", ["--working-directory="], []), ("x-terminal-emulator", None, ["-e"]), ("xterm", None, ["-e"]),
 )
 
 
-_desktop = {"t": 0, "ok": False}
+_cli = {"t": 0, "help": ""}
+
+
+def _cli_has(flag):
+    """Does this claude have `flag` (e.g. --desktop, --remote-control)? `claude --help` is read at most every 10 min."""
+    if time.time() - _cli["t"] > 600:
+        try:
+            _cli["help"] = subprocess.run([CLAUDE_BIN, "--help"], capture_output=True, text=True, timeout=30).stdout
+        except (OSError, subprocess.SubprocessError):
+            _cli["help"] = ""
+        _cli["t"] = time.time()
+    return flag in _cli["help"]
 
 
 def desktop_supported():
-    """Does this claude have --desktop (open a session in the Claude Desktop app)? Checked at most every 10 min."""
-    if time.time() - _desktop["t"] > 600:
-        try:
-            r = subprocess.run([CLAUDE_BIN, "--help"], capture_output=True, text=True, timeout=30)
-            _desktop["ok"] = "--desktop" in r.stdout
-        except (OSError, subprocess.SubprocessError):
-            _desktop["ok"] = False
-        _desktop["t"] = time.time()
-    return _desktop["ok"]
+    """Can chats be opened in the Claude Desktop app (claude --desktop)?"""
+    return _cli_has("--desktop")
+
+
+def remote_supported():
+    """Can chats be continued from the Claude mobile app or claude.ai/code (claude --remote-control)?"""
+    return _cli_has("--remote-control")
+
+
+def open_remote(cwd, sid, name=None):
+    """Continue a chat from your phone: a terminal window on this machine runs
+    `claude --resume <id> --remote-control <name>`, and the Claude mobile app (or claude.ai/code) drives it.
+    The session must stay running here; closing the window or /exit ends the remote control."""
+    if not remote_supported():
+        raise RuntimeError("this claude has no --remote-control; update Claude Code")
+    find_session_file(sid)
+    name = re.sub(r"\s+", " ", name or "").strip()[:60] or None
+    cmd = [CLAUDE_BIN, "--resume", sid, "--remote-control"] + ([name] if name else [])
+    return open_shell(cwd, cmd)
 
 
 def open_desktop(cwd, sid=None):
@@ -811,17 +860,24 @@ def open_desktop(cwd, sid=None):
     return {"ok": True}
 
 
-def open_shell(cwd):
+def open_shell(cwd, run=None):
+    """A terminal window in `cwd`; with `run` (an argv list) it runs that, then leaves you in a shell there."""
     if not os.path.isdir(cwd):
         raise ValueError(f"directory does not exist: {cwd}")
+    if run:  # keep the window open after the command ends, so its last words can be read
+        shell = os.environ.get("SHELL") or "/bin/bash"
+        line = " ".join(shlex.quote(a) for a in run)
+        run = [shell, "-lc", f"{line}; echo; exec {shlex.quote(shell)}"]
     custom = os.environ.get("WORKBENCH_TERMINAL") or os.environ.get("TERMINAL")
     if custom and shutil.which(custom.split()[0]):
-        cmd = custom.split()
+        cmd = custom.split() + (["-e", *run] if run else [])
     else:
-        for prog, args in TERMINALS:
+        for prog, args, exec_args in TERMINALS:
             exe = shutil.which(prog)
             if exe:
                 cmd = [exe] if args is None else [exe, *args[:-1], args[-1] + cwd]
+                if run:
+                    cmd += [*exec_args, shlex.join(run)] if prog == "tilix" else [*exec_args, *run]  # tilix -e takes one string
                 break
         else:
             raise RuntimeError("no terminal program found; set WORKBENCH_TERMINAL")
@@ -847,7 +903,8 @@ ANALYZE_MODEL = "haiku"
 
 # Flags server.py passes to `claude`; losing one would break chatting.
 USED_FLAGS = {"--print", "--output-format", "--verbose", "--include-partial-messages", "--resume",
-              "--permission-mode", "--model", "--effort", "--tools", "--no-session-persistence"}
+              "--permission-mode", "--model", "--effort", "--tools", "--no-session-persistence", "--desktop",
+              "--remote-control"}
 KNOWN_RECORDS = {"user", "assistant", "system", "summary", "ai-title", "custom-title", "last-prompt",
                  "cost-state", "mode", "permission-mode", "atis-latch", "attachment", "file-history-snapshot",
                  "file-history-delta", "queue-operation", "worktree-state", "relocated", "bridge-session",
@@ -859,7 +916,9 @@ RELEVANT_RE = re.compile(
     r"session (files?|ids?|titles?|names?|records?|storage|history|list)|transcript (file|format|jsonl)|"
     r"\.jsonl|~/\.claude/projects|\.claude/worktrees|--worktree\b|worktree (folder|path|directory|creation|cleanup)|"
     r"--model\b|/rename\b|custom title|ai[- ]title|--tools\b|--allowed-?tools|--verbose\b|cost-state|"
-    r"result (event|message)|system/init|init event", re.I)
+    r"result (event|message)|system/init|init event|\B-p mode|claude -p\b|/usage\b|rate.?limits?|usage limits?|"
+    r"token (usage|counts?)|cache (read|creation|write) tokens|--effort\b|--desktop\b|/desktop\b|"
+    r"Failed to authenticate|model catalog|claude agents\b|agents view", re.I)
 
 DASHBOARD_BRIEF = """\
 "Claude Workbench" is a local web dashboard (server.py + index.html, Python stdlib + vanilla JS) that:
@@ -872,6 +931,17 @@ DASHBOARD_BRIEF = """\
   and renders the stream events (system/init incl. model, claude_code_version, mcp_servers status and
   plugin_errors; stream_event deltas; assistant; user tool_result; result with cost/duration/denials);
 - shows session "last active" from the last message timestamp, and cost from cost-state records;
+- counts token usage per chat/model for the 5-hour window, today and the week from assistant records'
+  message.id, message.model and message.usage (input_tokens, output_tokens, cache_creation_input_tokens,
+  cache_read_input_tokens), including <session>/subagents/*.jsonl;
+- reads plan limits by sending "/usage" to `claude -p --output-format stream-json --verbose
+  --no-session-persistence` (usage_report.rate_limits: limits[kind, percent, resets_at], extra_usage);
+- recognises a logged-out claude.ai login from -p errors ("Failed to authenticate", "OAuth token revoked");
+- per-chat notes/to-dos run as prompts; Haiku checks (`--model haiku --tools ""`) judge them against the chat;
+- opens a chat in Claude Desktop with `claude --desktop --resume <id>`; model picker reads
+  ~/.claude/cache/model-catalog; has an effort picker (--effort);
+- searches chat names/prompts in every folder (n:<text> filter, like `claude agents`); pins groups,
+  folders and chats;
 - creates/removes git worktrees in <repo>/.claude/worktrees/<name>;
 - opens a terminal window (gnome-terminal, konsole, … or $WORKBENCH_TERMINAL) in a project/worktree folder;
 - stores folder groups, tags and this news inbox in SQLite."""
@@ -1445,7 +1515,8 @@ def server_status():
     with RUNS_LOCK:
         running = len(RUNS)
     return {"started": STARTED, "pid": os.getpid(), "codeChanged": code_mtime > STARTED, "codeTime": code_mtime,
-            "running": running, "service": _is_service(), "desktop": desktop_supported()}
+            "running": running, "service": _is_service(), "desktop": desktop_supported(), "remote": remote_supported(),
+            "tailscale": remote_state(), "port": PORT}
 
 
 def _is_service():
@@ -1483,6 +1554,199 @@ def kill_run(p):
         pass
 
 
+# ------------------------------------------------- remote access over Tailscale
+# The dashboard is a local tool with no login of its own, so it is never put on the open
+# internet. Tailscale gives the phone a private, device-authenticated route to this machine:
+# only devices signed into the same tailnet can reach the port at all.
+#
+# Two ways in, both covered here:
+#   proxy  (recommended)  `tailscale serve` terminates HTTPS on this machine and forwards to
+#                         127.0.0.1:PORT, so the server keeps binding loopback only.
+#   direct (--tailscale)  the server also binds this machine's 100.x tailnet address, for
+#                         plain http://100.x.y.z:PORT without setting up serve.
+# Either way a request must pass both checks below: the peer address is loopback or inside the
+# tailnet, and the Host header is one this machine actually answers to (no DNS rebinding).
+#
+# Remote access is OFF by default: the first time the dashboard starts after the machine boots it
+# disconnects Tailscale, and the 📱 switch in the page turns it on (`tailscale up` + `serve`).
+# Restarts within the same boot (⏻, a crash, systemctl restart) leave it as it was, so restarting
+# the server from the phone doesn't cut the phone off. Needs `sudo tailscale set --operator=$USER`
+# once, so this user may change Tailscale's settings without root.
+
+TAILSCALE_BIN = shutil.which("tailscale") or "/usr/bin/tailscale"
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+TS_V6_PREFIX = "fd7a:115c:a1e0:"  # Tailscale's IPv6 range, fd7a:115c:a1e0::/48
+_ts = {"t": 0.0, "self": None, "serve": None, "backend": None}
+_ts_lock = threading.Lock()
+
+
+def _ts_run(*args, timeout=10):
+    """`tailscale <args>` as parsed JSON, or None when Tailscale is missing, down or unreadable."""
+    try:
+        r = subprocess.run([TAILSCALE_BIN, *args], capture_output=True, text=True, timeout=timeout)
+        return json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def tailscale_info(port=None, max_age=20):
+    """This machine's tailnet identity and whether `tailscale serve` is proxying `port`:
+    {ip, ips, dns, host, serve, url} — or None when Tailscale isn't running."""
+    with _ts_lock:
+        if time.time() - _ts["t"] < max_age:
+            info = _ts["self"]
+        else:
+            info, st = None, _ts_run("status", "--json")
+            me = (st or {}).get("Self") or {}
+            ips = me.get("TailscaleIPs") or []
+            if (st or {}).get("BackendState") == "Running" and ips:
+                dns = (me.get("DNSName") or "").rstrip(".")
+                info = {"ips": ips, "ip": next((i for i in ips if ":" not in i), ips[0]),
+                        "dns": dns, "host": me.get("HostName") or dns.split(".")[0]}
+            _ts.update(t=time.time(), self=info, serve=_ts_run("serve", "status", "--json"),
+                       backend=(st or {}).get("BackendState"))
+        serve_host = _serve_host(_ts["serve"], port) if info and port else None
+    if not info:
+        return None
+    out = dict(info, serve=serve_host)
+    out["url"] = f"https://{serve_host.rsplit(':', 1)[0]}/" if serve_host else f"http://{info['ip']}:{port}/"
+    return out
+
+
+def remote_state(max_age=20):
+    """For the 📱 switch: is Tailscale installed and connected, and is the dashboard shared on it?"""
+    info = tailscale_info(PORT, max_age)
+    installed = os.path.exists(TAILSCALE_BIN)
+    return {"installed": installed, "backend": _ts["backend"] or ("" if installed else "NotInstalled"),
+            "on": bool(info and info["serve"]), "info": info}
+
+
+def _ts_cmd(*args, timeout=30):
+    """Run `tailscale <args>`; raise RuntimeError with Tailscale's own message when it fails."""
+    try:
+        r = subprocess.run([TAILSCALE_BIN, *args], capture_output=True, text=True, timeout=timeout,
+                           stdin=subprocess.DEVNULL)
+    except FileNotFoundError:
+        raise RuntimeError("Tailscale isn't installed — see README.md")
+    except subprocess.TimeoutExpired as e:  # it waits when it needs a browser: sign-in, or enabling Serve
+        out = ((e.stdout or b"") + (e.stderr or b"")).decode(errors="replace") if isinstance(e.stdout, bytes) \
+            else (e.stdout or "") + (e.stderr or "")
+        link = re.search(r"https://login\.tailscale\.com/\S+", out)
+        if link:
+            raise RuntimeError(f"Tailscale needs you in a browser first: {link.group(0)} — then try again")
+        raise RuntimeError(f"`tailscale {args[0]}` didn't finish within {timeout} s")
+    if r.returncode:
+        msg = (r.stderr or r.stdout).strip()
+        if "access denied" in msg.lower():
+            msg = "Tailscale refused (access denied). Allow this user once: sudo tailscale set --operator=$USER"
+        raise RuntimeError(msg[-400:] or f"`tailscale {args[0]}` failed")
+    return r.stdout
+
+
+def remote_set(on):
+    """Switch remote access: on = connect Tailscale and share the dashboard over HTTPS on the tailnet;
+    off = stop sharing it and disconnect this machine from the tailnet."""
+    try:
+        if on:
+            tailscale_info(PORT, max_age=0)
+            if _ts["backend"] != "Running":
+                _ts_cmd("up", timeout=20)
+            _ts_cmd("serve", "--bg", "--yes", "--https=443", f"http://127.0.0.1:{PORT}")
+        else:
+            try:
+                _ts_cmd("serve", "--yes", "--https=443", "off")
+            except RuntimeError:
+                pass  # nothing was shared
+            _ts_cmd("down")
+    finally:
+        _ts["t"] = 0.0  # re-read the state either way
+    return remote_state(max_age=0)
+
+
+def remote_boot_default():
+    """The first start after the machine booted switches remote access off (it is opt-in each boot)."""
+    try:
+        boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+    except OSError:
+        return
+    if kv_get("remote_boot") == boot or not os.path.exists(TAILSCALE_BIN):
+        return
+    kv_set("remote_boot", boot)
+    try:
+        remote_set(False)
+        print("  remote access (Tailscale) is off — first start since boot; turn it on with 📱 in the page", flush=True)
+    except RuntimeError as e:
+        print(f"  could not switch Tailscale off: {e}", flush=True)
+
+
+def _serve_host(cfg, port):
+    """The `host:443` that `tailscale serve` forwards to our port, if any."""
+    for host, web in ((cfg or {}).get("Web") or {}).items():
+        for h in (web.get("Handlers") or {}).values():
+            proxy = h.get("Proxy") or ""
+            if proxy.endswith(f":{port}") or proxy.endswith(f":{port}/"):
+                return host
+    return None
+
+
+def in_tailnet(ip):
+    """Is `ip` a Tailscale address (100.64.0.0/10 or fd7a:115c:a1e0::/48)?"""
+    ip = (ip or "").lower().split("%")[0]
+    if ip.startswith(TS_V6_PREFIX):
+        return True
+    parts = ip.split(".")
+    if len(parts) != 4 or not all(p.isdigit() for p in parts):
+        return False
+    return int(parts[0]) == 100 and 64 <= int(parts[1]) <= 127
+
+
+def remote_hosts(port):
+    """Host-header values that mean "this machine over Tailscale"."""
+    info = tailscale_info(port)
+    if not info:
+        return set()
+    names = {info["dns"], info["host"], *info["ips"]}
+    if info["serve"]:
+        names.add(info["serve"].rsplit(":", 1)[0])
+    return {n.lower() for n in names if n}
+
+
+def split_host(header):
+    """The hostname out of a Host header, without the port and without IPv6 brackets."""
+    h = (header or "").strip().lower()
+    if h.startswith("["):
+        return h[1:].split("]")[0]
+    return h.rsplit(":", 1)[0] if h.count(":") == 1 else h
+
+
+class _HTTPServer6(ThreadingHTTPServer):
+    address_family = socket.AF_INET6
+
+
+def bind_tailscale(port, handler):
+    """Also serve on this machine's tailnet address, for direct http://100.x.y.z:PORT access.
+    Tailscale may still be coming up (at boot the service can start first), so this keeps trying."""
+    def go():
+        bound = set()
+        while True:
+            info = tailscale_info(port, max_age=0)
+            for ip in (info or {}).get("ips", []):
+                if ip in bound:
+                    continue
+                try:
+                    srv = (_HTTPServer6 if ":" in ip else ThreadingHTTPServer)((ip, port), handler)
+                except OSError as e:
+                    print(f"  tailnet {ip}:{port} not bound ({e}) — retrying", flush=True)
+                    continue
+                bound.add(ip)
+                threading.Thread(target=srv.serve_forever, daemon=True).start()
+                print(f"  also on http://{ip if ':' not in ip else f'[{ip}]'}:{port}/  (tailnet)", flush=True)
+            if bound:
+                return
+            time.sleep(5)
+    threading.Thread(target=go, daemon=True).start()
+
+
 # ---------------------------------------------------------------- HTTP
 
 class Handler(BaseHTTPRequestHandler):
@@ -1491,9 +1755,18 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
+    def _peer_ok(self):
+        """Where the request came from: this machine (also `tailscale serve`, which proxies from
+        loopback) or another device on the tailnet. Anything else — LAN, internet — is refused."""
+        ip = (self.client_address[0] or "").split("%")[0]
+        return ip in ("127.0.0.1", "::1", "::ffff:127.0.0.1") or in_tailnet(ip)
+
     def _host_ok(self):
-        host = (self.headers.get("Host") or "").split(":")[0]
-        return host in ("127.0.0.1", "localhost")
+        """Guards against DNS rebinding: the Host must be a name this machine answers to."""
+        host = split_host(self.headers.get("Host"))
+        if not self._peer_ok():
+            return False
+        return host in LOCAL_HOSTS or host in remote_hosts(PORT)
 
     def _send(self, code, body, ctype="application/json"):
         data = body if isinstance(body, bytes) else json.dumps(body).encode()
@@ -1534,6 +1807,8 @@ class Handler(BaseHTTPRequestHandler):
                 if q.get("root"):
                     return self._send(200, list_sessions_under(q["root"]))
                 return self._send(200, list_sessions(q["project"]))
+            if u.path == "/api/chatsearch":
+                return self._send(200, search_chats(q.get("q")))
             if u.path == "/api/worktree/preview":
                 return self._send(200, worktree_preview(q["cwd"], q["source"], q["target"]))
             if u.path == "/api/session":
@@ -1579,6 +1854,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._chat(b)
             if u.path == "/api/shell":
                 return self._shell(b)
+            if u.path == "/api/remote":
+                return self._send(200, remote_set(bool(b.get("on"))))
             if u.path == "/api/restart":
                 restart_soon()
                 return self._send(200, {"ok": True})
@@ -1597,6 +1874,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, remove_worktree(b["cwd"], b["path"], b.get("force")))
             if u.path == "/api/open-desktop":
                 return self._send(200, open_desktop(b.get("cwd"), b.get("sessionId")))
+            if u.path == "/api/open-remote":  # continue a chat from the phone (Remote Control)
+                return self._send(200, open_remote(b.get("cwd"), b.get("sessionId"), b.get("name")))
             if u.path == "/api/open-terminal":  # "open shell" button: a terminal window in that folder
                 return self._send(200, open_shell(b["cwd"]))
             if u.path == "/api/session/remove":
@@ -1757,13 +2036,21 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    global PORT
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--tailscale", action="store_true",
+                    help="also listen on this machine's tailnet address, so phones on the same "
+                         "tailnet can open http://100.x.y.z:PORT/ without `tailscale serve`")
     a = ap.parse_args()
+    PORT = a.port
     db_init()
     threading.Thread(target=news_loop, daemon=True).start()
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     print(f"Claude UI running at http://127.0.0.1:{a.port}/  (Ctrl+C to stop)")
+    threading.Thread(target=remote_boot_default, daemon=True).start()  # tailscale can be slow: don't hold up the page
+    if a.tailscale:
+        bind_tailscale(a.port, Handler)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
